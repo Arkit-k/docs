@@ -1,0 +1,199 @@
+---
+title: "Chargebee"
+description: "Connect Chargebee to Windback for churn recovery."
+---
+
+# Chargebee Integration
+
+Connect your Chargebee account to Windback via the custom webhook endpoint to automatically detect cancellations, failed payments, and successful recoveries.
+
+<Info>
+Chargebee does not have a native Windback integration. This guide uses a lightweight Node.js relay function that receives Chargebee webhooks and forwards them to Windback's custom webhook endpoint.
+</Info>
+
+## Webhook URL
+
+Your Windback custom webhook URL is:
+
+```
+https://api.windbackai.com/api/v1/webhooks/custom/<your_public_key>
+```
+
+Your public key starts with `pub_` and is found in **Settings > API Keys**.
+
+## Setup
+
+<Steps>
+  <Step title="Deploy the Relay Function">
+    Deploy the Node.js relay function below to your server or a serverless platform (Vercel, AWS Lambda, etc.). This function receives Chargebee webhooks, maps the payload, and forwards it to Windback.
+  </Step>
+  <Step title="Add the Webhook in Chargebee">
+    1. Go to **Chargebee Dashboard > Settings > Configure Chargebee > Webhooks**
+    2. Click **Add Webhook**
+    3. Paste the URL of your deployed relay function
+    4. Select the events listed below
+    5. Click **Create**
+
+    <Tip>Use a Chargebee test site during development to avoid affecting production subscriptions.</Tip>
+  </Step>
+  <Step title="Select Webhook Events">
+    Enable the following events in Chargebee:
+
+    | Chargebee Event | Windback Event Type | Description |
+    |---|---|---|
+    | `subscription_cancelled` | `cancellation` | Customer canceled their subscription |
+    | `payment_failed` | `payment_failed` | Payment attempt failed |
+    | `payment_succeeded` | `payment_recovered` | Payment succeeded after a previous failure |
+  </Step>
+  <Step title="Verify the Connection">
+    1. Trigger a test event from Chargebee's webhook settings page
+    2. Check your relay function logs to confirm it forwarded the event
+    3. Check your Windback dashboard for the new churn event
+  </Step>
+</Steps>
+
+## Data Mapping
+
+The relay function maps Chargebee fields to Windback's custom webhook format:
+
+| Chargebee Field | Windback Field | Notes |
+|---|---|---|
+| `content.customer.email` | `customer_email` | Customer email address |
+| `content.customer.first_name` + `last_name` | `customer_name` | Combined full name |
+| `content.subscription.plan_id` | `plan_name` | Chargebee plan identifier |
+| `content.subscription.plan_amount` | `mrr` | Amount in cents |
+| `content.subscription.currency_code` | `currency` | ISO 4217 code (e.g., `usd`) |
+| `content.subscription.created_at` | `tenure_days` | Calculated from subscription start |
+| `content.subscription.cancel_reason` | `cancel_reason` | Chargebee cancel reason string |
+
+## Relay Function
+
+<CodeGroup>
+
+```javascript Node.js (Express)
+const express = require("express");
+const app = express();
+app.use(express.json());
+
+const WINDBACK_URL =
+  "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+const EVENT_MAP = {
+  subscription_cancelled: "cancellation",
+  payment_failed: "payment_failed",
+  payment_succeeded: "payment_recovered",
+};
+
+app.post("/chargebee-webhook", async (req, res) => {
+  const { event_type, content } = req.body;
+
+  const windbackEventType = EVENT_MAP[event_type];
+  if (!windbackEventType) {
+    // Event type not relevant to Windback, acknowledge and skip
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const customer = content.customer || {};
+  const subscription = content.subscription || {};
+
+  const tenureDays = subscription.created_at
+    ? Math.floor((Date.now() / 1000 - subscription.created_at) / 86400)
+    : undefined;
+
+  const payload = {
+    customer_email: customer.email,
+    customer_name: [customer.first_name, customer.last_name]
+      .filter(Boolean)
+      .join(" ") || undefined,
+    event_type: windbackEventType,
+    cancel_reason: subscription.cancel_reason || undefined,
+    mrr: subscription.plan_amount || undefined,
+    currency: subscription.currency_code?.toLowerCase() || "usd",
+    provider: "chargebee",
+    plan_name: subscription.plan_id || undefined,
+    tenure_days: tenureDays,
+  };
+
+  try {
+    await fetch(WINDBACK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to forward to Windback:", err);
+  }
+
+  // Always return 200 so Chargebee doesn't retry
+  res.status(200).json({ status: "ok" });
+});
+
+app.listen(3000, () => console.log("Chargebee relay listening on port 3000"));
+```
+
+```javascript Node.js (Serverless / Vercel)
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const WINDBACK_URL =
+    "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+  const EVENT_MAP = {
+    subscription_cancelled: "cancellation",
+    payment_failed: "payment_failed",
+    payment_succeeded: "payment_recovered",
+  };
+
+  const { event_type, content } = req.body;
+  const windbackEventType = EVENT_MAP[event_type];
+
+  if (!windbackEventType) {
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const customer = content.customer || {};
+  const subscription = content.subscription || {};
+
+  const tenureDays = subscription.created_at
+    ? Math.floor((Date.now() / 1000 - subscription.created_at) / 86400)
+    : undefined;
+
+  await fetch(WINDBACK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_email: customer.email,
+      customer_name: [customer.first_name, customer.last_name]
+        .filter(Boolean)
+        .join(" ") || undefined,
+      event_type: windbackEventType,
+      cancel_reason: subscription.cancel_reason || undefined,
+      mrr: subscription.plan_amount || undefined,
+      currency: subscription.currency_code?.toLowerCase() || "usd",
+      provider: "chargebee",
+      plan_name: subscription.plan_id || undefined,
+      tenure_days: tenureDays,
+    }),
+  });
+
+  res.status(200).json({ status: "ok" });
+}
+```
+
+</CodeGroup>
+
+<Warning>
+Replace `pub_your_key` with your actual Windback public key. Never commit your real key to version control.
+</Warning>
+
+## Webhook Resilience
+
+<Info>
+Windback's custom webhook endpoint **always returns HTTP 200** regardless of internal processing status. Your relay function should also always return 200 to Chargebee to prevent webhook retries and eventual deactivation.
+</Info>
+
+<Note>
+Chargebee supports webhook signature verification via the `X-Chargebee-Webhook-Api-Key` header. We recommend validating this in your relay function before forwarding to Windback. See [Chargebee's webhook docs](https://www.chargebee.com/docs/2.0/webhook_settings.html) for details.
+</Note>

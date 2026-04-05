@@ -1,0 +1,203 @@
+---
+title: "LemonSqueezy"
+description: "Connect LemonSqueezy to Windback for churn recovery."
+---
+
+# LemonSqueezy Integration
+
+Connect your LemonSqueezy account to Windback via the custom webhook endpoint to detect subscription cancellations, failed payments, and successful recoveries.
+
+<Info>
+LemonSqueezy does not have a native Windback integration. This guide uses a lightweight Node.js relay function that receives LemonSqueezy webhooks and forwards them to Windback's custom webhook endpoint.
+</Info>
+
+## Webhook URL
+
+Your Windback custom webhook URL is:
+
+```
+https://api.windbackai.com/api/v1/webhooks/custom/<your_public_key>
+```
+
+Your public key starts with `pub_` and is found in **Settings > API Keys**.
+
+## Setup
+
+<Steps>
+  <Step title="Deploy the Relay Function">
+    Deploy the Node.js relay function below to your server or a serverless platform (Vercel, AWS Lambda, etc.). This function receives LemonSqueezy webhooks, maps the payload, and forwards it to Windback.
+  </Step>
+  <Step title="Add the Webhook in LemonSqueezy">
+    1. Go to **LemonSqueezy Dashboard > Settings > Webhooks**
+    2. Click **Add Webhook** (or the **+** button)
+    3. Paste the URL of your deployed relay function
+    4. Enter a signing secret and store it securely
+    5. Select the events listed below
+    6. Click **Save**
+
+    <Tip>Store the signing secret in an environment variable. You will need it to verify incoming webhook signatures.</Tip>
+  </Step>
+  <Step title="Select Webhook Events">
+    Enable the following events in LemonSqueezy:
+
+    | LemonSqueezy Event | Windback Event Type | Description |
+    |---|---|---|
+    | `subscription_cancelled` | `cancellation` | Customer canceled their subscription |
+    | `subscription_payment_failed` | `payment_failed` | Subscription payment attempt failed |
+    | `subscription_payment_success` | `payment_recovered` | Payment succeeded after a previous failure |
+  </Step>
+  <Step title="Verify the Connection">
+    1. Create a test subscription in LemonSqueezy's test mode
+    2. Cancel the subscription to trigger a `subscription_cancelled` event
+    3. Check your Windback dashboard for the new churn event
+  </Step>
+</Steps>
+
+## Data Mapping
+
+LemonSqueezy webhooks use a nested `data.attributes` format. The relay function maps these fields to Windback's custom webhook format:
+
+| LemonSqueezy Field | Windback Field | Notes |
+|---|---|---|
+| `data.attributes.user_email` | `customer_email` | Subscriber email address |
+| `data.attributes.user_name` | `customer_name` | Subscriber name |
+| `data.attributes.product_name` | `plan_name` | LemonSqueezy product name |
+| `data.attributes.variant_name` | `plan_name` (fallback) | Used if product name is not set |
+| `data.attributes.first_subscription_payment.amount` | `mrr` | Amount in cents |
+| `data.attributes.first_subscription_payment.currency` | `currency` | ISO 4217 code |
+| `data.attributes.created_at` | `tenure_days` | Calculated from subscription start |
+
+## Relay Function
+
+<CodeGroup>
+
+```javascript Node.js (Express)
+const express = require("express");
+const app = express();
+app.use(express.json());
+
+const WINDBACK_URL =
+  "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+const EVENT_MAP = {
+  subscription_cancelled: "cancellation",
+  subscription_payment_failed: "payment_failed",
+  subscription_payment_success: "payment_recovered",
+};
+
+app.post("/lemonsqueezy-webhook", async (req, res) => {
+  const { meta, data } = req.body;
+  const eventName = meta?.event_name;
+
+  const windbackEventType = EVENT_MAP[eventName];
+  if (!windbackEventType) {
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const attrs = data?.attributes || {};
+
+  const tenureDays = attrs.created_at
+    ? Math.floor(
+        (Date.now() - new Date(attrs.created_at).getTime()) / (1000 * 86400)
+      )
+    : undefined;
+
+  // LemonSqueezy provides amount in the subscription payment object or
+  // as a top-level attribute depending on the event type
+  const payment = attrs.first_subscription_payment || {};
+
+  const payload = {
+    customer_email: attrs.user_email,
+    customer_name: attrs.user_name || undefined,
+    event_type: windbackEventType,
+    mrr: payment.amount || attrs.subtotal || undefined,
+    currency: (payment.currency || attrs.currency || "usd").toLowerCase(),
+    provider: "lemonsqueezy",
+    plan_name: attrs.product_name || attrs.variant_name || undefined,
+    tenure_days: tenureDays,
+  };
+
+  try {
+    await fetch(WINDBACK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to forward to Windback:", err);
+  }
+
+  res.status(200).json({ status: "ok" });
+});
+
+app.listen(3000, () =>
+  console.log("LemonSqueezy relay listening on port 3000")
+);
+```
+
+```javascript Node.js (Serverless / Vercel)
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const WINDBACK_URL =
+    "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+  const EVENT_MAP = {
+    subscription_cancelled: "cancellation",
+    subscription_payment_failed: "payment_failed",
+    subscription_payment_success: "payment_recovered",
+  };
+
+  const { meta, data } = req.body;
+  const eventName = meta?.event_name;
+  const windbackEventType = EVENT_MAP[eventName];
+
+  if (!windbackEventType) {
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const attrs = data?.attributes || {};
+  const payment = attrs.first_subscription_payment || {};
+
+  const tenureDays = attrs.created_at
+    ? Math.floor(
+        (Date.now() - new Date(attrs.created_at).getTime()) / (1000 * 86400)
+      )
+    : undefined;
+
+  await fetch(WINDBACK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_email: attrs.user_email,
+      customer_name: attrs.user_name || undefined,
+      event_type: windbackEventType,
+      mrr: payment.amount || attrs.subtotal || undefined,
+      currency: (payment.currency || attrs.currency || "usd").toLowerCase(),
+      provider: "lemonsqueezy",
+      plan_name: attrs.product_name || attrs.variant_name || undefined,
+      tenure_days: tenureDays,
+    }),
+  });
+
+  res.status(200).json({ status: "ok" });
+}
+```
+
+</CodeGroup>
+
+<Warning>
+Replace `pub_your_key` with your actual Windback public key. Never commit your real key to version control.
+</Warning>
+
+## Webhook Resilience
+
+<Info>
+Windback's custom webhook endpoint **always returns HTTP 200** regardless of internal processing status. Your relay function should also always return 200 to LemonSqueezy to prevent webhook retries and eventual deactivation.
+</Info>
+
+<Note>
+LemonSqueezy signs webhook payloads using an HMAC signature in the `X-Signature` header. We strongly recommend verifying this signature in your relay function before forwarding to Windback. See [LemonSqueezy's webhook docs](https://docs.lemonsqueezy.com/guides/developer-guide/webhooks) for details.
+</Note>

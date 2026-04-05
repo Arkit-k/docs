@@ -38,6 +38,10 @@
             "pages": [
               "integrations/stripe",
               "integrations/razorpay",
+              "integrations/chargebee",
+              "integrations/polar",
+              "integrations/lemonsqueezy",
+              "integrations/paypal",
               "integrations/custom-webhook"
             ]
           },

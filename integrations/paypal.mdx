@@ -1,0 +1,244 @@
+---
+title: "PayPal"
+description: "Connect PayPal subscriptions to Windback for churn recovery."
+---
+
+# PayPal Integration
+
+Connect your PayPal subscription billing to Windback via the custom webhook endpoint to detect cancellations, failed payments, and successful recoveries.
+
+<Info>
+PayPal does not have a native Windback integration. This guide uses a lightweight Node.js relay function that receives PayPal webhooks, maps the payload, and forwards it to Windback's custom webhook endpoint.
+</Info>
+
+## Webhook URL
+
+Your Windback custom webhook URL is:
+
+```
+https://api.windbackai.com/api/v1/webhooks/custom/<your_public_key>
+```
+
+Your public key starts with `pub_` and is found in **Settings > API Keys**.
+
+## Setup
+
+<Steps>
+  <Step title="Deploy the Relay Function">
+    Deploy the Node.js relay function below to your server or a serverless platform (Vercel, AWS Lambda, etc.). This function receives PayPal webhooks, verifies the signature, maps the payload, and forwards it to Windback.
+  </Step>
+  <Step title="Add the Webhook in PayPal">
+    1. Go to [PayPal Developer Dashboard > My Apps & Credentials](https://developer.paypal.com/dashboard/applications)
+    2. Select your application
+    3. Scroll to **Webhooks** and click **Add Webhook**
+    4. Paste the URL of your deployed relay function
+    5. Select the events listed below
+    6. Click **Save**
+
+    <Warning>PayPal webhooks require signature verification. Unlike other providers, PayPal will not reliably deliver events to endpoints that do not return 200. Always verify the webhook signature before processing. See the relay function below for an example.</Warning>
+  </Step>
+  <Step title="Select Webhook Events">
+    Enable the following events in PayPal:
+
+    | PayPal Event | Windback Event Type | Description |
+    |---|---|---|
+    | `BILLING.SUBSCRIPTION.CANCELLED` | `cancellation` | Subscriber canceled the subscription |
+    | `PAYMENT.SALE.DENIED` | `payment_failed` | Payment was denied or failed |
+    | `PAYMENT.SALE.COMPLETED` | `payment_recovered` | Payment completed successfully |
+
+    <Note>PayPal uses uppercase event names with dot notation. Make sure you select the exact events above.</Note>
+  </Step>
+  <Step title="Note Your Webhook ID">
+    After creating the webhook, PayPal assigns a **Webhook ID**. Copy this value -- you will need it for signature verification in your relay function.
+  </Step>
+  <Step title="Verify the Connection">
+    1. Use PayPal's **Webhook Simulator** in the Developer Dashboard to send a test event
+    2. Check your relay function logs to confirm it forwarded the event
+    3. Check your Windback dashboard for the new churn event
+  </Step>
+</Steps>
+
+## Data Mapping
+
+The relay function maps PayPal webhook fields to Windback's custom webhook format:
+
+| PayPal Field | Windback Field | Notes |
+|---|---|---|
+| `resource.payer.email_address` | `customer_email` | Payer email |
+| `resource.payer.name.given_name` + `surname` | `customer_name` | Combined payer name |
+| `resource.plan_id` | `plan_name` | PayPal billing plan ID |
+| `resource.amount.total` or `resource.shipping_amount.value` | `mrr` | Converted to cents |
+| `resource.amount.currency` | `currency` | ISO 4217 code |
+| `resource.start_time` or `resource.create_time` | `tenure_days` | Calculated from subscription start |
+
+## Relay Function
+
+<CodeGroup>
+
+```javascript Node.js (Express)
+const express = require("express");
+const app = express();
+app.use(express.json());
+
+const WINDBACK_URL =
+  "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+const EVENT_MAP = {
+  "BILLING.SUBSCRIPTION.CANCELLED": "cancellation",
+  "PAYMENT.SALE.DENIED": "payment_failed",
+  "PAYMENT.SALE.COMPLETED": "payment_recovered",
+};
+
+// Convert dollar string to cents integer
+function toCents(amountStr) {
+  if (!amountStr) return undefined;
+  return Math.round(parseFloat(amountStr) * 100);
+}
+
+app.post("/paypal-webhook", async (req, res) => {
+  // TODO: Verify PayPal webhook signature before processing.
+  // See https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature
+  // Use the PayPal REST SDK or manually call the verification endpoint.
+
+  const { event_type, resource } = req.body;
+
+  const windbackEventType = EVENT_MAP[event_type];
+  if (!windbackEventType) {
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const payer = resource?.payer || resource?.subscriber || {};
+  const payerName = payer.name || {};
+  const amount = resource?.amount || resource?.shipping_amount || {};
+
+  const startDate =
+    resource?.start_time || resource?.create_time;
+  const tenureDays = startDate
+    ? Math.floor(
+        (Date.now() - new Date(startDate).getTime()) / (1000 * 86400)
+      )
+    : undefined;
+
+  const payload = {
+    customer_email:
+      payer.email_address || resource?.subscriber?.email_address,
+    customer_name: [payerName.given_name, payerName.surname]
+      .filter(Boolean)
+      .join(" ") || undefined,
+    event_type: windbackEventType,
+    mrr: toCents(amount.total || amount.value),
+    currency: (amount.currency || amount.currency_code || "usd").toLowerCase(),
+    provider: "paypal",
+    plan_name: resource?.plan_id || undefined,
+    tenure_days: tenureDays,
+  };
+
+  try {
+    await fetch(WINDBACK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to forward to Windback:", err);
+  }
+
+  res.status(200).json({ status: "ok" });
+});
+
+app.listen(3000, () => console.log("PayPal relay listening on port 3000"));
+```
+
+```javascript Node.js (Serverless / Vercel)
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  // TODO: Verify PayPal webhook signature before processing.
+  // See https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature
+
+  const WINDBACK_URL =
+    "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+  const EVENT_MAP = {
+    "BILLING.SUBSCRIPTION.CANCELLED": "cancellation",
+    "PAYMENT.SALE.DENIED": "payment_failed",
+    "PAYMENT.SALE.COMPLETED": "payment_recovered",
+  };
+
+  const { event_type, resource } = req.body;
+  const windbackEventType = EVENT_MAP[event_type];
+
+  if (!windbackEventType) {
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const payer = resource?.payer || resource?.subscriber || {};
+  const payerName = payer.name || {};
+  const amount = resource?.amount || resource?.shipping_amount || {};
+
+  const startDate = resource?.start_time || resource?.create_time;
+  const tenureDays = startDate
+    ? Math.floor(
+        (Date.now() - new Date(startDate).getTime()) / (1000 * 86400)
+      )
+    : undefined;
+
+  function toCents(amountStr) {
+    if (!amountStr) return undefined;
+    return Math.round(parseFloat(amountStr) * 100);
+  }
+
+  await fetch(WINDBACK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_email:
+        payer.email_address || resource?.subscriber?.email_address,
+      customer_name: [payerName.given_name, payerName.surname]
+        .filter(Boolean)
+        .join(" ") || undefined,
+      event_type: windbackEventType,
+      mrr: toCents(amount.total || amount.value),
+      currency: (
+        amount.currency || amount.currency_code || "usd"
+      ).toLowerCase(),
+      provider: "paypal",
+      plan_name: resource?.plan_id || undefined,
+      tenure_days: tenureDays,
+    }),
+  });
+
+  res.status(200).json({ status: "ok" });
+}
+```
+
+</CodeGroup>
+
+<Warning>
+Replace `pub_your_key` with your actual Windback public key. Never commit your real key to version control.
+</Warning>
+
+## Signature Verification
+
+<Warning>
+PayPal webhook signature verification is strongly recommended. Without it, anyone with your relay URL could send fake events. PayPal provides a [verification API endpoint](https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature_post) that you should call before forwarding events to Windback.
+</Warning>
+
+To verify signatures, you need:
+- Your **Webhook ID** (from the PayPal Developer Dashboard)
+- The request headers: `paypal-transmission-id`, `paypal-transmission-time`, `paypal-transmission-sig`, `paypal-cert-url`
+- The raw request body
+
+See [PayPal's webhook signature verification guide](https://developer.paypal.com/docs/api/webhooks/v1/#verify-webhook-signature_post) for the full implementation.
+
+## Webhook Resilience
+
+<Info>
+Windback's custom webhook endpoint **always returns HTTP 200** regardless of internal processing status. Your relay function should also always return 200 to PayPal to prevent webhook retries.
+</Info>
+
+<Tip>
+PayPal's Webhook Simulator in the Developer Dashboard is useful for testing without creating real subscriptions. Use it to verify your relay function is correctly mapping events before going live.
+</Tip>

@@ -1,0 +1,199 @@
+---
+title: "Polar"
+description: "Connect Polar to Windback for churn recovery."
+---
+
+# Polar Integration
+
+Connect your Polar account to Windback via the custom webhook endpoint to detect subscription cancellations and changes.
+
+<Info>
+Polar does not have a native Windback integration. This guide uses a lightweight Node.js relay function that receives Polar webhooks and forwards them to Windback's custom webhook endpoint.
+</Info>
+
+## Webhook URL
+
+Your Windback custom webhook URL is:
+
+```
+https://api.windbackai.com/api/v1/webhooks/custom/<your_public_key>
+```
+
+Your public key starts with `pub_` and is found in **Settings > API Keys**.
+
+## Setup
+
+<Steps>
+  <Step title="Deploy the Relay Function">
+    Deploy the Node.js relay function below to your server or a serverless platform (Vercel, AWS Lambda, etc.). This function receives Polar webhooks, maps the payload, and forwards it to Windback.
+  </Step>
+  <Step title="Add the Webhook in Polar">
+    1. Go to **Polar Dashboard > Settings > Webhooks**
+    2. Click **Add Endpoint**
+    3. Paste the URL of your deployed relay function
+    4. Select the events listed below
+    5. Save the webhook
+
+    <Tip>Polar provides a webhook secret for signature verification. Store it securely and validate incoming requests.</Tip>
+  </Step>
+  <Step title="Select Webhook Events">
+    Enable the following events in Polar:
+
+    | Polar Event | Windback Event Type | Description |
+    |---|---|---|
+    | `subscription.canceled` | `cancellation` | Customer canceled their subscription |
+    | `subscription.updated` | Conditional | Check the `status` field -- forward as `payment_failed` if status is `past_due`, or `payment_recovered` if status returns to `active` |
+  </Step>
+  <Step title="Verify the Connection">
+    1. Create a test subscription in Polar's sandbox environment
+    2. Cancel the subscription to trigger a `subscription.canceled` event
+    3. Check your Windback dashboard for the new churn event
+  </Step>
+</Steps>
+
+## Data Mapping
+
+The relay function maps Polar fields to Windback's custom webhook format:
+
+| Polar Field | Windback Field | Notes |
+|---|---|---|
+| `data.user.email` | `customer_email` | Subscriber email address |
+| `data.user.username` | `customer_name` | Polar username |
+| `data.product.name` | `plan_name` | Product name |
+| `data.amount` | `mrr` | Amount in cents |
+| `data.currency` | `currency` | ISO 4217 code |
+| `data.created_at` | `tenure_days` | Calculated from subscription start |
+
+## Relay Function
+
+<CodeGroup>
+
+```javascript Node.js (Express)
+const express = require("express");
+const app = express();
+app.use(express.json());
+
+const WINDBACK_URL =
+  "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+function mapPolarEvent(event, data) {
+  if (event === "subscription.canceled") {
+    return "cancellation";
+  }
+  if (event === "subscription.updated") {
+    if (data.status === "past_due") return "payment_failed";
+    if (data.status === "active") return "payment_recovered";
+  }
+  return null;
+}
+
+app.post("/polar-webhook", async (req, res) => {
+  const { event, data } = req.body;
+
+  const windbackEventType = mapPolarEvent(event, data);
+  if (!windbackEventType) {
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const user = data.user || {};
+  const product = data.product || {};
+
+  const tenureDays = data.created_at
+    ? Math.floor(
+        (Date.now() - new Date(data.created_at).getTime()) / (1000 * 86400)
+      )
+    : undefined;
+
+  const payload = {
+    customer_email: user.email,
+    customer_name: user.username || undefined,
+    event_type: windbackEventType,
+    mrr: data.amount || undefined,
+    currency: data.currency?.toLowerCase() || "usd",
+    provider: "polar",
+    plan_name: product.name || undefined,
+    tenure_days: tenureDays,
+  };
+
+  try {
+    await fetch(WINDBACK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (err) {
+    console.error("Failed to forward to Windback:", err);
+  }
+
+  res.status(200).json({ status: "ok" });
+});
+
+app.listen(3000, () => console.log("Polar relay listening on port 3000"));
+```
+
+```javascript Node.js (Serverless / Vercel)
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const WINDBACK_URL =
+    "https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key";
+
+  const { event, data } = req.body;
+
+  let windbackEventType = null;
+  if (event === "subscription.canceled") {
+    windbackEventType = "cancellation";
+  } else if (event === "subscription.updated") {
+    if (data.status === "past_due") windbackEventType = "payment_failed";
+    else if (data.status === "active") windbackEventType = "payment_recovered";
+  }
+
+  if (!windbackEventType) {
+    return res.status(200).json({ status: "skipped" });
+  }
+
+  const user = data.user || {};
+  const product = data.product || {};
+
+  const tenureDays = data.created_at
+    ? Math.floor(
+        (Date.now() - new Date(data.created_at).getTime()) / (1000 * 86400)
+      )
+    : undefined;
+
+  await fetch(WINDBACK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_email: user.email,
+      customer_name: user.username || undefined,
+      event_type: windbackEventType,
+      mrr: data.amount || undefined,
+      currency: data.currency?.toLowerCase() || "usd",
+      provider: "polar",
+      plan_name: product.name || undefined,
+      tenure_days: tenureDays,
+    }),
+  });
+
+  res.status(200).json({ status: "ok" });
+}
+```
+
+</CodeGroup>
+
+<Warning>
+Replace `pub_your_key` with your actual Windback public key. Never commit your real key to version control.
+</Warning>
+
+## Webhook Resilience
+
+<Info>
+Windback's custom webhook endpoint **always returns HTTP 200** regardless of internal processing status. Your relay function should also always return 200 to Polar to prevent webhook retries.
+</Info>
+
+<Note>
+Polar signs webhook payloads using a shared secret. We recommend verifying the signature in your relay function before forwarding to Windback. See [Polar's webhook documentation](https://docs.polar.sh/api/webhooks) for details.
+</Note>
