@@ -1,0 +1,124 @@
+---
+title: "Widget Installation"
+description: "Install the Windback cancellation widget."
+---
+
+# Widget Installation
+
+The Windback cancellation widget captures cancel reasons and shows retention offers when customers try to cancel. It drops into any web app with a single script tag.
+
+## Script Tag Setup
+
+Add the following script tag to your cancellation page or app layout:
+
+```html
+<script
+  src="https://api.windbackai.com/widget.js"
+  data-api-key="pub_your_public_key"
+  async
+></script>
+```
+
+<Warning>
+Use your **public key** (`pub_`) for the widget. Never use your secret key in client-side code.
+</Warning>
+
+## How It Works
+
+<Steps>
+  <Step title="Widget Loads">
+    The script loads asynchronously and initializes the Windback widget. It does not block page rendering.
+  </Step>
+  <Step title="Customer Triggers Cancel">
+    When the customer clicks your cancel button, call `window.Windback.show()` to open the widget modal.
+  </Step>
+  <Step title="Reason Collection">
+    The widget presents a list of cancel reasons. The customer selects one and optionally adds free-text feedback.
+  </Step>
+  <Step title="Retention Offer">
+    Based on the selected reason, the widget may show a targeted retention offer (discount, pause, downgrade) configured in your dashboard.
+  </Step>
+  <Step title="Data Sent to Windback">
+    The cancel reason, feedback, and offer response are sent to Windback. A churn event is created and AI recovery begins.
+  </Step>
+</Steps>
+
+## Configuration Attributes
+
+Set these attributes on the `<script>` tag to configure the widget:
+
+| Attribute | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `data-api-key` | `string` | Yes | --- | Your project's public API key (`pub_`) |
+| `data-theme` | `string` | No | `light` | Widget theme: `light` or `dark` |
+| `data-position` | `string` | No | `center` | Modal position: `center`, `bottom-right`, `bottom-left` |
+
+```html
+<script
+  src="https://api.windbackai.com/widget.js"
+  data-api-key="pub_your_public_key"
+  data-theme="dark"
+  data-position="bottom-right"
+  async
+></script>
+```
+
+## Triggering the Widget
+
+The widget exposes a global `window.Windback` object. Call `show()` to open the cancellation modal:
+
+```javascript
+// Attach to your cancel button
+document.getElementById("cancel-btn").addEventListener("click", () => {
+  window.Windback.show();
+});
+```
+
+You can also pass customer context:
+
+```javascript
+window.Windback.show({
+  customerEmail: "jane@example.com",
+  customerName: "Jane Smith",
+  planName: "Team Pro",
+  mrr: 4999,
+});
+```
+
+<Tip>
+Passing customer context enables more personalized retention offers and better recovery email targeting.
+</Tip>
+
+## Allowed Origins
+
+The widget validates the origin of the page it is loaded on. By default, all origins are allowed. To restrict which domains can use your public key:
+
+1. Go to **Settings > API Keys**
+2. Add allowed origins (e.g., `https://app.yourcompany.com`)
+3. The widget will refuse to load on unlisted origins
+
+<Note>
+`localhost` origins are always allowed in development for convenience.
+</Note>
+
+## Graceful Degradation
+
+The widget is designed to never break your cancellation flow:
+
+| Scenario | Widget Behavior | Impact on Your App |
+|---|---|---|
+| Script fails to load | Widget does not appear | None --- cancel flow proceeds normally |
+| API key is invalid | Widget shows error state, closes | Cancel flow proceeds |
+| Network error during submission | Widget retries, then closes with warning | Cancel data may be lost, cancel flow proceeds |
+| `window.Windback` is undefined | Calling `show()` is a no-op | None |
+| Rate limited | Widget queues and retries | Slight delay, cancel flow proceeds |
+
+<Info>
+The widget will never prevent a customer from canceling. It is purely informational and incentive-based. Always ensure your cancel flow completes even if the widget fails.
+</Info>
+
+## Rate Limiting
+
+The cancel flow widget is rate limited to **10 requests per 15 seconds** per public key. This prevents abuse while allowing normal cancellation flows.
+
+If the rate limit is exceeded, the widget queues submissions and retries automatically.

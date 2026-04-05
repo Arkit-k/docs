@@ -1,0 +1,170 @@
+---
+title: "Widget Customization"
+description: "Customize the cancellation widget appearance and behavior."
+---
+
+# Widget Customization
+
+Customize the look, feel, and behavior of the Windback cancellation widget to match your brand.
+
+## Themes
+
+The widget ships with two built-in themes.
+
+<CardGroup cols={2}>
+  <Card title="Light Theme" icon="sun">
+    Clean white background with dark text. Best for light-themed apps.
+
+    ```html
+    <script
+      src="https://api.windbackai.com/widget.js"
+      data-api-key="pub_your_key"
+      data-theme="light"
+      async
+    ></script>
+    ```
+  </Card>
+  <Card title="Dark Theme" icon="moon">
+    Dark background with light text. Best for dark-themed apps.
+
+    ```html
+    <script
+      src="https://api.windbackai.com/widget.js"
+      data-api-key="pub_your_key"
+      data-theme="dark"
+      async
+    ></script>
+    ```
+  </Card>
+</CardGroup>
+
+## Custom Cancel Reasons
+
+By default, the widget shows a standard set of cancel reasons. You can customize these in **Settings > Cancel Flow** in your dashboard, or pass them programmatically:
+
+```javascript
+window.Windback.show({
+  customerEmail: "jane@example.com",
+  reasons: [
+    { id: "too_expensive", label: "Too expensive" },
+    { id: "missing_features", label: "Missing features I need" },
+    { id: "switching", label: "Switching to a competitor" },
+    { id: "not_using", label: "Not using it enough" },
+    { id: "temporary", label: "Just need a break" },
+    { id: "other", label: "Other", allowFreeText: true },
+  ],
+});
+```
+
+<Info>
+When `allowFreeText` is `true`, the widget shows a text area for the customer to elaborate. This free-text feedback is sent to Windback and used by the AI to personalize recovery emails.
+</Info>
+
+## Event Callbacks
+
+Register callbacks to respond to widget events in your application:
+
+```javascript
+window.Windback.show({
+  customerEmail: "jane@example.com",
+  onSubmit: (data) => {
+    console.log("Cancel reason:", data.reason);
+    console.log("Feedback:", data.feedbackText);
+    console.log("Accepted offer:", data.selectedOffer);
+
+    // Proceed with your cancellation logic
+    cancelSubscription(data);
+  },
+  onDismiss: () => {
+    console.log("Customer dismissed the widget");
+    // Customer chose not to cancel --- no action needed
+  },
+});
+```
+
+### Callback Reference
+
+<AccordionGroup>
+  <Accordion title="onSubmit(data)">
+    Called when the customer submits their cancel reason. The `data` object contains:
+
+    <ResponseField name="reason" type="string">
+      The selected cancel reason ID (e.g., `too_expensive`).
+    </ResponseField>
+
+    <ResponseField name="reasonLabel" type="string">
+      The human-readable cancel reason label.
+    </ResponseField>
+
+    <ResponseField name="feedbackText" type="string">
+      Free-text feedback if provided. Empty string if not.
+    </ResponseField>
+
+    <ResponseField name="selectedOffer" type="string | null">
+      The retention offer the customer accepted, or `null` if they declined all offers.
+    </ResponseField>
+
+    <ResponseField name="customerEmail" type="string">
+      The customer's email address.
+    </ResponseField>
+  </Accordion>
+  <Accordion title="onDismiss()">
+    Called when the customer closes the widget without submitting a cancel reason. No data is passed. Use this to keep the customer on their current plan.
+  </Accordion>
+</AccordionGroup>
+
+## Required Fields
+
+The widget requires certain data to function correctly:
+
+| Field | Required | Passed Via | Notes |
+|---|---|---|---|
+| `data-api-key` | Yes | Script attribute | Your public key (`pub_`) |
+| `customerEmail` | Yes | `Windback.show()` | Needed to create the churn event |
+| `customerName` | No | `Windback.show()` | Improves personalization |
+| `planName` | No | `Windback.show()` | Shown in retention offers |
+| `mrr` | No | `Windback.show()` | Used for revenue impact tracking |
+
+<Warning>
+If `customerEmail` is not provided when calling `show()`, the widget will display an email input field. For the best experience, always pass the customer's email programmatically.
+</Warning>
+
+## Full Example
+
+```html
+<!-- Add the widget script -->
+<script
+  src="https://api.windbackai.com/widget.js"
+  data-api-key="pub_your_key"
+  data-theme="dark"
+  data-position="center"
+  async
+></script>
+
+<script>
+  document.getElementById("cancel-btn").addEventListener("click", () => {
+    window.Windback.show({
+      customerEmail: currentUser.email,
+      customerName: currentUser.name,
+      planName: currentUser.plan,
+      mrr: currentUser.mrr,
+      reasons: [
+        { id: "too_expensive", label: "Too expensive" },
+        { id: "missing_features", label: "Missing features" },
+        { id: "not_using", label: "Not using it enough" },
+        { id: "other", label: "Other", allowFreeText: true },
+      ],
+      onSubmit: (data) => {
+        // Your cancellation logic
+        fetch("/api/cancel", {
+          method: "POST",
+          body: JSON.stringify({ reason: data.reason }),
+        });
+      },
+      onDismiss: () => {
+        // Customer stayed --- nothing to do
+      },
+    });
+  });
+</script>
+```

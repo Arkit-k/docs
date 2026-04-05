@@ -1,0 +1,198 @@
+---
+title: "Churn Risk Webhook Delivery"
+description: "Receive churn risk alerts via webhook to trigger your own workflows."
+---
+
+# Churn Risk Webhook Delivery
+
+Instead of letting Windback send emails directly, you can receive churn risk alerts as webhook payloads and handle them yourself.
+
+## Why Use Webhook Delivery
+
+<CardGroup cols={3}>
+  <Card title="Custom Flows">
+    Trigger internal workflows -- assign a CSM, create a Jira ticket, or start a drip campaign in your own email platform.
+  </Card>
+  <Card title="Slack Alerts">
+    Post high-risk customer alerts to a Slack channel so your team can respond in real time.
+  </Card>
+  <Card title="CRM Updates">
+    Push risk scores and signals into Salesforce, HubSpot, or any CRM via your middleware.
+  </Card>
+</CardGroup>
+
+## Setup
+
+<Steps>
+  <Step title="Enable Webhook Mode">
+    In your project dashboard, go to **Settings > Churn Risk** and set the delivery mode to **Webhook**.
+
+    Or use the API:
+
+    ```bash
+    curl -X PUT https://api.windbackai.com/api/v1/projects/:slug/churn-risk/config \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{"delivery_mode": "webhook"}'
+    ```
+  </Step>
+  <Step title="Set Your Webhook URL">
+    Provide the HTTPS endpoint where Windback should send alerts:
+
+    ```bash
+    curl -X PUT https://api.windbackai.com/api/v1/projects/:slug/churn-risk/config \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{"webhook_url": "https://example.com/hooks/churn-risk"}'
+    ```
+
+    <Warning>The URL must use HTTPS. Plain HTTP endpoints will be rejected.</Warning>
+  </Step>
+  <Step title="Configure Risk Threshold">
+    Set the minimum risk score that triggers a webhook. Only customers at or above this score will generate an alert.
+
+    ```bash
+    curl -X PUT https://api.windbackai.com/api/v1/projects/:slug/churn-risk/config \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{"risk_threshold": 60}'
+    ```
+
+    <Tip>Start with a threshold of 60 (High risk) to avoid alert fatigue, then lower it as your team builds capacity.</Tip>
+  </Step>
+</Steps>
+
+## Webhook Payload
+
+When a customer crosses the risk threshold, Windback sends a `POST` request with the following JSON body:
+
+```json
+{
+  "event": "churn_risk.alert",
+  "project_id": "proj_abc123",
+  "customer_email": "jane@example.com",
+  "risk_score": 82,
+  "risk_level": "critical",
+  "signals": [
+    { "name": "no_events_14d", "weight": 0.25 },
+    { "name": "declining_usage", "weight": 0.18 },
+    { "name": "cancel_page_views", "weight": 0.15 },
+    { "name": "failed_payments", "weight": 0.12 }
+  ],
+  "triggered_at": "2026-04-04T10:30:00Z",
+  "opaque_id": "cr_evt_9f8e7d6c5b4a"
+}
+```
+
+### Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event` | string | Always `churn_risk.alert` |
+| `project_id` | string | Your project identifier |
+| `customer_email` | string | The at-risk customer's email |
+| `risk_score` | integer | Score from 0 to 100 |
+| `risk_level` | string | One of `critical`, `high`, `medium`, `low` |
+| `signals` | array | Top contributing signals with their weights |
+| `triggered_at` | string | ISO 8601 timestamp of when the alert fired |
+| `opaque_id` | string | Unique identifier for this alert event |
+
+## Signature Verification
+
+Every webhook request includes an `X-Windback-Signature` header containing an HMAC SHA-256 signature. Verify it using your project's webhook secret to confirm the payload was sent by Windback and has not been tampered with.
+
+The signature is computed over the raw request body using your webhook secret as the key.
+
+<CodeGroup>
+
+```javascript Node.js
+const crypto = require("crypto");
+
+function verifySignature(req, webhookSecret) {
+  const signature = req.headers["x-windback-signature"];
+  const expected = crypto
+    .createHmac("sha256", webhookSecret)
+    .update(req.rawBody)
+    .digest("hex");
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature, "hex"),
+    Buffer.from(expected, "hex")
+  );
+}
+```
+
+```python Python
+import hmac
+import hashlib
+
+def verify_signature(payload: bytes, signature: str, webhook_secret: str) -> bool:
+    expected = hmac.new(
+        webhook_secret.encode(),
+        payload,
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+```go Go
+package main
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+)
+
+func verifySignature(payload []byte, signature string, webhookSecret string) bool {
+	mac := hmac.New(sha256.New, []byte(webhookSecret))
+	mac.Write(payload)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(expected), []byte(signature))
+}
+```
+
+</CodeGroup>
+
+<Warning>Always use constant-time comparison (e.g., `timingSafeEqual`, `hmac.compare_digest`, `hmac.Equal`) to prevent timing attacks.</Warning>
+
+## Delivery Behavior
+
+Windback follows a retry strategy to ensure reliable delivery:
+
+- **Attempts:** Up to 3 retries on failure (4 total attempts).
+- **Backoff:** Exponential backoff -- 10 seconds, 60 seconds, 5 minutes.
+- **Success:** Any `2xx` response is treated as successful delivery.
+- **Failure:** After all retries are exhausted, the alert is marked as `failed` in the Alert Log. You can manually re-trigger it from the dashboard.
+
+<Note>Webhook timeouts are set to 10 seconds. Make sure your endpoint responds quickly. If you need to do heavy processing, accept the webhook and process it asynchronously.</Note>
+
+## Tracking with Opaque IDs
+
+Every webhook payload includes an `opaque_id` field. Use this to:
+
+- **Deduplicate** alerts if the same payload is delivered more than once during retries.
+- **Correlate** alerts with actions taken in your system.
+- **Reference** specific alerts when contacting Windback support.
+
+The `opaque_id` is also visible in the **Alert Log** in the dashboard, making it easy to trace an alert from your system back to Windback.
+
+## Disabling Webhook Delivery
+
+To stop receiving webhooks, switch back to **Direct** mode or disable churn risk alerts entirely:
+
+```bash
+# Switch to direct email delivery
+curl -X PUT https://api.windbackai.com/api/v1/projects/:slug/churn-risk/config \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"delivery_mode": "direct"}'
+
+# Or disable churn risk alerts entirely
+curl -X PUT https://api.windbackai.com/api/v1/projects/:slug/churn-risk/config \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+<Info>Disabling alerts does not delete historical data. Risk scores continue to be calculated in the background and are visible in the dashboard.</Info>

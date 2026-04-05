@@ -1,0 +1,67 @@
+---
+title: "Quickstart"
+description: "Get started with Windback in 5 minutes."
+---
+
+# Quickstart
+
+Get Windback up and running in five minutes.
+
+<Steps>
+  <Step title="Create an Account">
+    Sign up at [windbackai.com/register](https://windbackai.com/register) with email or Google OAuth.
+  </Step>
+  <Step title="Create a Project & Get API Keys">
+    After onboarding, create your first project. You'll receive two API keys:
+
+    | Key Type | Prefix | Use For |
+    |---|---|---|
+    | **Public** | `pub_` | Widget, cancel flow, webhooks |
+    | **Secret** | `sk_` | Server-side SDK calls, dashboard API |
+
+    <Warning>Keep your secret key safe. Never expose it in client-side code.</Warning>
+  </Step>
+  <Step title="Connect Your Payment Provider">
+    Add a webhook URL in your payment provider's dashboard:
+
+    ```
+    https://api.windbackai.com/api/v1/webhooks/stripe/<your_public_key>
+    ```
+
+    Windback supports **Stripe**, **Razorpay**, **Paddle**, **Dodo Payments**, and custom webhooks.
+  </Step>
+  <Step title="Add the Cancellation Widget (Optional)">
+    Add the widget to your cancellation page to capture cancel reasons:
+
+    ```html
+    <script
+      src="https://api.windbackai.com/widget.js"
+      data-api-key="pub_your_public_key"
+      async
+    ></script>
+    ```
+  </Step>
+  <Step title="View Churn Events">
+    Visit your [dashboard](https://windbackai.com/dashboard) to see incoming cancellations and failed payments. Each event shows customer details, cancel reason, and churn risk score.
+  </Step>
+  <Step title="Generate & Send Recovery Emails">
+    Click on any churn event to generate AI recovery email variants. Review, edit if needed, and send. Track opens, clicks, and recoveries in real time.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn about API keys and auth methods
+  </Card>
+  <Card title="Stripe Integration" icon="stripe" href="/integrations/stripe">
+    Set up the Stripe webhook
+  </Card>
+  <Card title="Node.js SDK" icon="js" href="/sdks/node">
+    Install the SDK for server-side use
+  </Card>
+  <Card title="Cancel Flow" icon="door-open" href="/features/cancel-flow">
+    Set up the cancellation flow
+  </Card>
+</CardGroup>

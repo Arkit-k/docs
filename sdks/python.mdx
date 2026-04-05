@@ -1,0 +1,166 @@
+---
+title: "Python SDK"
+description: "Official Python SDK for Windback."
+---
+
+# Python SDK
+
+The official Windback SDK for Python. Use it to track events, create churn events, and manage recovery flows from your server.
+
+## Installation
+
+```bash
+pip install windback
+```
+
+<Tip>
+The SDK requires Python 3.8 or later.
+</Tip>
+
+## Quick Start
+
+```python
+from windback import Windback
+
+client = Windback(
+    api_key="sk_live_your_secret_key",
+    project_slug="my-project",
+)
+
+# Track a customer event
+client.track_event(
+    event="feature_used",
+    customer_email="jane@example.com",
+    properties={
+        "feature": "exports",
+        "plan": "pro",
+    },
+)
+```
+
+<Warning>
+Use your **secret key** (`sk_`) for server-side SDK calls. Never expose it in client-side code.
+</Warning>
+
+## Track Events
+
+```python
+# Track a single event
+client.track_event(
+    event="feature_used",
+    customer_email="jane@example.com",
+    properties={
+        "feature": "dashboard",
+        "duration_seconds": 120,
+    },
+)
+
+# Track a batch of events
+client.track_events([
+    {
+        "event": "login",
+        "customer_email": "jane@example.com",
+        "timestamp": "2025-12-01T10:00:00Z",
+    },
+    {
+        "event": "subscription_renewed",
+        "customer_email": "jane@example.com",
+        "properties": {"plan": "pro", "mrr": 2999},
+    },
+])
+```
+
+## Create Churn Events
+
+```python
+event = client.create_churn_event(
+    customer_email="jane@example.com",
+    customer_name="Jane Smith",
+    event_type="cancellation",
+    cancel_reason="Missing integrations we need",
+    mrr=4999,
+    currency="usd",
+    plan_name="Team Pro",
+    tenure_days=180,
+)
+
+print(event.id)      # "evt_abc123"
+print(event.status)  # "new"
+```
+
+## Cancel Flow
+
+```python
+# Submit a cancel flow response
+client.submit_cancel_flow(
+    customer_email="jane@example.com",
+    cancel_reason="Too expensive for our team",
+    feedback_text="Love the product but budget is tight",
+    selected_offer="downgrade",
+)
+
+# Report just the cancel reason
+client.report_cancel_reason(
+    customer_email="jane@example.com",
+    reason="switching_competitor",
+)
+```
+
+## Async Support
+
+The SDK includes an async client for use with `asyncio` and frameworks like FastAPI.
+
+```python
+from windback import AsyncWindback
+
+client = AsyncWindback(
+    api_key="sk_live_your_secret_key",
+    project_slug="my-project",
+)
+
+# All methods are async
+event = await client.create_churn_event(
+    customer_email="jane@example.com",
+    event_type="cancellation",
+    cancel_reason="Too expensive",
+    mrr=2999,
+)
+
+await client.track_event(
+    event="feature_used",
+    customer_email="jane@example.com",
+    properties={"feature": "exports"},
+)
+```
+
+<Info>
+The async client uses `httpx` under the hood for non-blocking HTTP requests.
+</Info>
+
+## Method Reference
+
+| Method | Description |
+|---|---|
+| `track_event(event, customer_email, ...)` | Track a single customer behavior event |
+| `track_events(events)` | Track a batch of events |
+| `create_churn_event(...)` | Create a churn event manually |
+| `submit_cancel_flow(...)` | Submit cancel flow data (reason + feedback) |
+| `report_cancel_reason(...)` | Report a cancel reason for an existing event |
+| `create_recovery_template(...)` | Create a custom recovery email template |
+
+## Error Handling
+
+```python
+from windback import WindbackError
+
+try:
+    event = client.create_churn_event(...)
+except WindbackError as e:
+    print(e.status)   # HTTP status code
+    print(e.message)  # Error message
+    print(e.code)     # Error code (e.g., "INVALID_API_KEY")
+```
+
+<Tip>
+The SDK automatically retries failed requests up to 3 times with exponential backoff.
+</Tip>

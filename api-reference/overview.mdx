@@ -1,0 +1,196 @@
+---
+title: "API Overview"
+description: "Complete Windback API reference."
+---
+
+# API Overview
+
+The Windback API lets you manage churn events, generate recovery emails, track customer behavior, and access analytics programmatically.
+
+## Base URL
+
+```
+https://api.windbackai.com/api/v1
+```
+
+All endpoints are served over HTTPS. HTTP requests are rejected.
+
+## Authentication
+
+Windback supports two authentication methods:
+
+<CardGroup cols={2}>
+  <Card title="JWT Bearer Token" icon="key">
+    Used by the dashboard and web app. Obtained via login or OAuth.
+
+    ```bash
+    Authorization: Bearer eyJhbGciOi...
+    ```
+  </Card>
+  <Card title="API Key" icon="lock">
+    Used for server-side SDK calls and API access. Pass via header.
+
+    ```bash
+    X-API-Key: sk_live_abc123...
+    ```
+  </Card>
+</CardGroup>
+
+<Warning>
+Never expose your secret key (`sk_`) in client-side code. Use the public key (`pub_`) for widgets and webhooks.
+</Warning>
+
+## Endpoints
+
+### Authentication
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/auth/register` | Register a new account |
+| `POST` | `/auth/login` | Login and receive JWT |
+| `POST` | `/auth/google` | OAuth login with Google |
+| `GET` | `/auth/me` | Get current user |
+| `POST` | `/auth/forgot-password` | Request password reset |
+| `POST` | `/auth/reset-password` | Reset password with token |
+
+### Projects
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/projects` | Create a new project |
+| `GET` | `/projects` | List all projects |
+| `GET` | `/projects/:slug` | Get project by slug |
+| `PATCH` | `/projects/:slug` | Update project settings |
+| `POST` | `/projects/:slug/rotate-keys` | Rotate API keys |
+
+### Churn Events
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/projects/:slug/churn-events` | Create a churn event |
+| `GET` | `/projects/:slug/churn-events` | List churn events (paginated) |
+| `GET` | `/projects/:slug/churn-events/:id` | Get a single churn event |
+| `POST` | `/projects/:slug/churn-events/:id/recovered` | Mark event as recovered |
+| `PATCH` | `/projects/:slug/churn-events/:id/cancel-reason` | Update cancel reason |
+
+### Recovery & Email Variants
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/projects/:slug/churn-events/:id/generate` | Generate 9 AI recovery variants |
+| `POST` | `/projects/:slug/churn-events/:id/variants/:vid/send` | Send a variant email |
+| `PATCH` | `/projects/:slug/churn-events/:id/variants/:vid` | Update a variant before sending |
+| `GET` | `/projects/:slug/churn-events/:id/variants` | List all variants for an event |
+
+### Stats & Analytics
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/projects/:slug/stats` | Get project churn statistics |
+| `GET` | `/projects/:slug/cohorts` | Get cohort analysis data |
+| `GET` | `/projects/:slug/forecasting` | Get revenue forecasting data |
+
+### Event Tracking
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/track` | Track customer behavior events |
+
+### Cancel Flow
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/cancel-flow/reasons` | Submit cancel reason from widget |
+| `GET` | `/cancel-flow/config/:publicKey` | Get cancel flow configuration |
+
+### Webhooks
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/webhooks/stripe/:publicKey` | Receive Stripe webhook events |
+| `POST` | `/webhooks/razorpay/:publicKey` | Receive Razorpay webhook events |
+| `POST` | `/webhooks/custom/:publicKey` | Receive custom webhook events |
+
+### Team & Invitations
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/projects/:slug/invitations` | Invite a team member |
+| `GET` | `/projects/:slug/members` | List project members |
+| `DELETE` | `/projects/:slug/members/:id` | Remove a team member |
+| `POST` | `/invitations/:token/accept` | Accept an invitation |
+
+## Response Format
+
+All API responses follow a consistent JSON format:
+
+### Success Response
+
+```json
+{
+  "data": { ... },
+  "meta": {
+    "page": 1,
+    "per_page": 20,
+    "total": 42
+  }
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "customer_email is required",
+    "details": [
+      {
+        "field": "customer_email",
+        "message": "This field is required"
+      }
+    ]
+  }
+}
+```
+
+## Pagination
+
+List endpoints support cursor-based pagination:
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `page` | integer | `1` | Page number |
+| `per_page` | integer | `20` | Items per page (max 100) |
+| `sort` | string | `created_at` | Sort field |
+| `order` | string | `desc` | Sort order: `asc` or `desc` |
+
+```bash
+curl "https://api.windbackai.com/api/v1/projects/my-project/churn-events?page=2&per_page=50" \
+  -H "X-API-Key: sk_live_abc123..."
+```
+
+## Error Handling
+
+| HTTP Status | Error Code | Description |
+|---|---|---|
+| `400` | `VALIDATION_ERROR` | Invalid request body or parameters |
+| `401` | `UNAUTHORIZED` | Missing or invalid authentication |
+| `403` | `FORBIDDEN` | Insufficient permissions |
+| `404` | `NOT_FOUND` | Resource not found |
+| `409` | `CONFLICT` | Duplicate resource |
+| `429` | `RATE_LIMITED` | Too many requests |
+| `500` | `INTERNAL_ERROR` | Server error |
+
+## Rate Limits
+
+| Endpoint Group | Limit |
+|---|---|
+| Auth (login, register) | 5 req/s, burst 10 |
+| Cancel flow | 10 req/15s per key |
+| Event tracking | Plan-based per key |
+| General API | 10 req/s, burst 30 |
+
+<Note>
+Rate limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`) are included in all responses.
+</Note>

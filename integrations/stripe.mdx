@@ -1,0 +1,106 @@
+---
+title: "Stripe"
+description: "Connect Stripe to detect cancellations and failed payments."
+---
+
+# Stripe Integration
+
+Connect your Stripe account to automatically detect cancellations, failed payments, and successful recoveries.
+
+## Setup
+
+<Steps>
+  <Step title="Copy Your Webhook URL">
+    Find your webhook URL in **Settings > Integrations > Stripe**. The format is:
+
+    ```
+    https://api.windbackai.com/api/v1/webhooks/stripe/<your_public_key>
+    ```
+
+    Your public key starts with `pub_` and is unique to your project.
+
+    <Tip>You can find your public key on the **Settings > API Keys** page.</Tip>
+  </Step>
+  <Step title="Add the Webhook in Stripe Dashboard">
+    1. Go to [Stripe Dashboard > Developers > Webhooks](https://dashboard.stripe.com/webhooks)
+    2. Click **Add endpoint**
+    3. Paste your Windback webhook URL
+    4. Select the events listed below
+    5. Click **Add endpoint**
+  </Step>
+  <Step title="Select Webhook Events">
+    Enable the following events in Stripe:
+
+    | Stripe Event | Windback Churn Type | Description |
+    |---|---|---|
+    | `customer.subscription.deleted` | Voluntary churn | Customer actively canceled their subscription |
+    | `invoice.payment_failed` | Involuntary churn | Payment method declined or expired |
+    | `invoice.payment_succeeded` | Recovery | Previously failed payment succeeded |
+  </Step>
+</Steps>
+
+## Voluntary vs Involuntary Churn
+
+Windback distinguishes between two types of churn to tailor recovery strategies:
+
+<CardGroup cols={2}>
+  <Card title="Voluntary Churn" icon="user-xmark">
+    The customer intentionally cancels. Triggered by `customer.subscription.deleted`. Recovery strategies focus on understanding the cancel reason and addressing objections — value recap, downgrade offers, pause options.
+  </Card>
+  <Card title="Involuntary Churn" icon="credit-card">
+    The payment fails without customer intent. Triggered by `invoice.payment_failed`. Recovery strategies focus on updating payment methods — dunning emails, payment update reminders, grace period notifications.
+  </Card>
+</CardGroup>
+
+## Webhook Resilience
+
+<Info>
+Windback webhook endpoints **always return HTTP 200** regardless of internal processing status. This prevents Stripe from disabling your webhook due to repeated failures.
+</Info>
+
+Events are queued and processed asynchronously. If processing fails internally, events are retried automatically. You will never lose a churn event due to a transient error.
+
+## Data Mapping
+
+When Windback receives a Stripe webhook, the following fields are extracted:
+
+| Stripe Field | Windback Field | Notes |
+|---|---|---|
+| `customer.email` | `customer_email` | Decrypted from Stripe customer object |
+| `customer.name` | `customer_name` | Falls back to email prefix if empty |
+| `subscription.plan.amount` | `mrr` | Converted to cents |
+| `subscription.plan.currency` | `currency` | ISO 4217 code (e.g., `usd`) |
+| `subscription.plan.nickname` | `plan_name` | Stripe plan display name |
+| `subscription.created` | `tenure_days` | Calculated from subscription start to cancel |
+
+## Testing with Stripe CLI
+
+You can test the integration locally using the [Stripe CLI](https://stripe.com/docs/stripe-cli):
+
+```bash
+# Install Stripe CLI and login
+stripe login
+
+# Forward events to your Windback webhook
+stripe listen --forward-to https://api.windbackai.com/api/v1/webhooks/stripe/pub_your_key
+
+# Trigger a test event
+stripe trigger customer.subscription.deleted
+stripe trigger invoice.payment_failed
+```
+
+<Warning>
+Use Stripe test mode keys during development. Never send test events to a production webhook URL.
+</Warning>
+
+## Verifying the Connection
+
+After setup, you can verify the integration is working:
+
+1. Trigger a test event using Stripe CLI or the Stripe Dashboard
+2. Check your Windback dashboard for the new churn event
+3. The event should appear within a few seconds with status `new`
+
+<Note>
+Windback does not currently verify Stripe webhook signatures. The public key in the URL acts as the authentication mechanism. Keep your webhook URL private.
+</Note>

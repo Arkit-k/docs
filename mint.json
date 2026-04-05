@@ -1,0 +1,111 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Windback",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#0004E0",
+    "light": "#4A5FFF",
+    "dark": "#0004E0",
+    "anchors": {
+      "from": "#0004E0",
+      "to": "#FBAA8A"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Dashboard",
+      "url": "https://windbackai.com/dashboard"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started",
+    "url": "https://windbackai.com/register"
+  },
+  "tabs": [
+    {
+      "name": "API Reference",
+      "url": "api-reference"
+    },
+    {
+      "name": "SDKs",
+      "url": "sdks"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/windback-dev"
+    },
+    {
+      "name": "Discord",
+      "icon": "discord",
+      "url": "https://discord.gg/windback"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "introduction",
+        "quickstart",
+        "authentication",
+        "data-security",
+        "multi-project"
+      ]
+    },
+    {
+      "group": "Features",
+      "pages": [
+        "features/churn-risk",
+        "features/churn-risk-webhook",
+        "features/failed-payment-recovery",
+        "features/cancel-flow",
+        "features/retention-offers"
+      ]
+    },
+    {
+      "group": "Integrations",
+      "pages": [
+        "integrations/stripe",
+        "integrations/razorpay",
+        "integrations/custom-webhook"
+      ]
+    },
+    {
+      "group": "Widget",
+      "pages": [
+        "widget/installation",
+        "widget/customization"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/overview",
+        "api-reference/churn-events",
+        "api-reference/recovery",
+        "api-reference/stats",
+        "api-reference/tracking"
+      ]
+    },
+    {
+      "group": "SDKs",
+      "pages": [
+        "sdks/node",
+        "sdks/python",
+        "sdks/go"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "x": "https://x.com/windbackdev",
+    "github": "https://github.com/windback-dev",
+    "discord": "https://discord.gg/windback",
+    "linkedin": "https://linkedin.com/company/windback-dev"
+  }
+}

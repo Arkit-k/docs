@@ -1,0 +1,182 @@
+---
+title: "Node.js SDK"
+description: "Official Node.js/TypeScript SDK for Windback."
+---
+
+# Node.js SDK
+
+The official Windback SDK for Node.js and TypeScript. Use it to track events, create churn events, and manage recovery flows from your server.
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @windback/sdk
+```
+
+```bash pnpm
+pnpm add @windback/sdk
+```
+
+```bash yarn
+yarn add @windback/sdk
+```
+
+```bash bun
+bun add @windback/sdk
+```
+
+</CodeGroup>
+
+## Quick Start
+
+```typescript
+import { Windback } from "@windback/sdk";
+
+const windback = new Windback({
+  apiKey: "sk_live_your_secret_key",
+  projectSlug: "my-project",
+});
+
+// Track a customer event
+await windback.trackEvent({
+  event: "feature_used",
+  customerEmail: "jane@example.com",
+  properties: {
+    feature: "exports",
+    plan: "pro",
+  },
+});
+```
+
+<Warning>
+Use your **secret key** (`sk_`) for server-side SDK calls. Never expose it in client-side code.
+</Warning>
+
+## Track Events
+
+Track customer behavior events to improve churn prediction and recovery personalization.
+
+```typescript
+// Track a single event
+await windback.trackEvent({
+  event: "feature_used",
+  customerEmail: "jane@example.com",
+  properties: {
+    feature: "dashboard",
+    duration_seconds: 120,
+  },
+});
+
+// Track a batch of events
+await windback.trackEvents([
+  {
+    event: "login",
+    customerEmail: "jane@example.com",
+    timestamp: "2025-12-01T10:00:00Z",
+  },
+  {
+    event: "subscription_renewed",
+    customerEmail: "jane@example.com",
+    properties: { plan: "pro", mrr: 2999 },
+  },
+]);
+```
+
+## Cancel Flow
+
+Submit cancellation data from your custom cancel flow.
+
+```typescript
+// Submit a cancel flow response
+await windback.submitCancelFlow({
+  customerEmail: "jane@example.com",
+  cancelReason: "Too expensive for our team",
+  feedbackText: "Love the product but budget is tight",
+  selectedOffer: "downgrade", // optional: if they accepted a retention offer
+});
+
+// Report just the cancel reason
+await windback.reportCancelReason({
+  customerEmail: "jane@example.com",
+  reason: "switching_competitor",
+});
+```
+
+## Create Churn Events
+
+Manually create churn events when not using webhooks.
+
+```typescript
+const event = await windback.createChurnEvent({
+  customerEmail: "jane@example.com",
+  customerName: "Jane Smith",
+  eventType: "cancellation",
+  cancelReason: "Missing integrations we need",
+  mrr: 4999,
+  currency: "usd",
+  planName: "Team Pro",
+  tenureDays: 180,
+});
+
+console.log(event.id); // "evt_abc123"
+console.log(event.status); // "new"
+```
+
+## Recovery Templates
+
+Create custom recovery email templates.
+
+```typescript
+await windback.createRecoveryTemplate({
+  name: "Win-back discount",
+  subject: "We'd love to have you back, {{name}}",
+  body: "Hi {{name}},\n\nWe noticed you recently canceled...",
+  strategy: "discount",
+});
+```
+
+## Method Reference
+
+| Method | Description |
+|---|---|
+| `trackEvent(event)` | Track a single customer behavior event |
+| `trackEvents(events)` | Track a batch of events |
+| `createChurnEvent(data)` | Create a churn event manually |
+| `submitCancelFlow(data)` | Submit cancel flow data (reason + feedback) |
+| `reportCancelReason(data)` | Report a cancel reason for an existing event |
+| `createRecoveryTemplate(data)` | Create a custom recovery email template |
+
+## Error Handling
+
+```typescript
+import { WindbackError } from "@windback/sdk";
+
+try {
+  await windback.createChurnEvent({ /* ... */ });
+} catch (error) {
+  if (error instanceof WindbackError) {
+    console.error(error.status);  // HTTP status code
+    console.error(error.message); // Error message
+    console.error(error.code);    // Error code (e.g., "INVALID_API_KEY")
+  }
+}
+```
+
+## TypeScript Support
+
+The SDK is written in TypeScript and ships with full type definitions. All methods, parameters, and responses are fully typed.
+
+```typescript
+import type {
+  TrackEventInput,
+  ChurnEventInput,
+  ChurnEvent,
+  CancelFlowInput,
+} from "@windback/sdk";
+```
+
+<Tip>
+The SDK automatically retries failed requests up to 3 times with exponential backoff.
+</Tip>

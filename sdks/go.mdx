@@ -1,0 +1,166 @@
+---
+title: "Go SDK"
+description: "Official Go SDK for Windback."
+---
+
+# Go SDK
+
+<Note>
+The Go SDK is coming soon. In the meantime, you can use the Windback API directly with Go's standard `net/http` package.
+</Note>
+
+## Direct API Usage
+
+### Track an Event
+
+```go
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	payload := map[string]interface{}{
+		"event":          "feature_used",
+		"customer_email": "jane@example.com",
+		"properties": map[string]interface{}{
+			"feature": "exports",
+			"plan":    "pro",
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest(
+		"POST",
+		"https://api.windbackai.com/api/v1/track",
+		bytes.NewBuffer(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", "sk_live_your_secret_key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Printf("Status: %d\n", resp.StatusCode)
+}
+```
+
+### Create a Churn Event
+
+```go
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+)
+
+type ChurnEvent struct {
+	CustomerEmail string `json:"customer_email"`
+	CustomerName  string `json:"customer_name"`
+	EventType     string `json:"event_type"`
+	CancelReason  string `json:"cancel_reason"`
+	MRR           int    `json:"mrr"`
+	Currency      string `json:"currency"`
+	PlanName      string `json:"plan_name"`
+	TenureDays    int    `json:"tenure_days"`
+}
+
+func main() {
+	event := ChurnEvent{
+		CustomerEmail: "jane@example.com",
+		CustomerName:  "Jane Smith",
+		EventType:     "cancellation",
+		CancelReason:  "Too expensive",
+		MRR:           4999,
+		Currency:      "usd",
+		PlanName:      "Team Pro",
+		TenureDays:    180,
+	}
+
+	body, _ := json.Marshal(event)
+
+	req, _ := http.NewRequest(
+		"POST",
+		"https://api.windbackai.com/api/v1/projects/my-project/churn-events",
+		bytes.NewBuffer(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", "sk_live_your_secret_key")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	fmt.Printf("Response: %s\n", respBody)
+}
+```
+
+### Send a Custom Webhook
+
+```go
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	payload := map[string]interface{}{
+		"customer_email": "jane@example.com",
+		"customer_name":  "Jane Smith",
+		"event_type":     "cancellation",
+		"cancel_reason":  "Too expensive for our team",
+		"mrr":            4999,
+		"currency":       "usd",
+		"provider":       "internal",
+		"plan_name":      "Team Pro",
+		"tenure_days":    180,
+	}
+
+	body, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest(
+		"POST",
+		"https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key",
+		bytes.NewBuffer(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	fmt.Printf("Status: %d\n", resp.StatusCode)
+}
+```
+
+<Tip>
+When the Go SDK is released, it will be available via `go get github.com/windback-dev/windback-go`.
+</Tip>
+
+## API Reference
+
+While waiting for the SDK, refer to the [API Overview](/api-reference/overview) for the full list of endpoints you can call from Go.

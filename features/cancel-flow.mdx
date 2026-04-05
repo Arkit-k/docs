@@ -1,0 +1,207 @@
+---
+title: "Cancel Flow"
+description: "Capture cancellation reasons and show retention offers to customers."
+---
+
+# Cancel Flow
+
+The Cancel Flow API lets you capture why a customer wants to cancel, show them a targeted retention offer, and record the outcome -- all through a simple three-endpoint flow.
+
+## How It Works
+
+<Steps>
+  <Step title="Customer Initiates Cancellation">
+    The customer clicks your cancel button. Your app calls the Cancel Flow API.
+  </Step>
+  <Step title="Reason Captured">
+    The customer selects a cancellation reason from your UI. You submit it to Windback.
+  </Step>
+  <Step title="Offer Matched">
+    Windback looks up the retention offer configured for that reason.
+  </Step>
+  <Step title="Offer Shown">
+    Your app displays the offer to the customer using the response data.
+  </Step>
+  <Step title="Accepted or Declined">
+    The customer accepts the offer (and stays) or declines it (and cancels). You report the outcome.
+  </Step>
+  <Step title="AI Follow-Up">
+    If the customer declines, Windback can send an AI-generated recovery email. If they accept, a confirmation email is sent.
+  </Step>
+</Steps>
+
+## Authentication
+
+Cancel Flow endpoints use your **public API key** (prefix `pub_`). This key is safe to use in client-side code.
+
+```bash
+-H "X-API-Key: pub_your_public_key"
+```
+
+<Note>The public key only grants access to Cancel Flow endpoints. It cannot read customer data or modify project settings.</Note>
+
+## Rate Limits
+
+Cancel Flow endpoints are rate-limited to **10 requests per 15 seconds** per API key. If you exceed this limit, the API returns `429 Too Many Requests`.
+
+## Cancel Reasons
+
+Windback supports eight standard cancellation reasons:
+
+| Reason Key | Description |
+|-----------|-------------|
+| `too_expensive` | The customer finds the price too high |
+| `missing_features` | A feature the customer needs is not available |
+| `switched_to_competitor` | The customer is moving to another product |
+| `not_using_enough` | The customer does not use the product enough to justify the cost |
+| `technical_issues` | The customer is experiencing bugs or reliability problems |
+| `bad_support` | The customer is unhappy with support quality |
+| `temporary_pause` | The customer wants to pause, not permanently cancel |
+| `other` | None of the above reasons apply |
+
+## API Endpoints
+
+### Submit Cancellation Reason
+
+Submit the customer's chosen cancellation reason and receive a matched retention offer.
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/cancel-flow/submit \
+  -H "X-API-Key: pub_your_public_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer_email": "jane@example.com",
+    "reason": "too_expensive",
+    "feedback": "I love the product but my budget was cut this quarter."
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "cancel_flow_id": "cf_abc123",
+  "reason": "too_expensive",
+  "offer": {
+    "offer_type": "discount",
+    "title": "Stay for 20% Less",
+    "description": "We'd hate to see you go. Here's 20% off your next 3 months.",
+    "cta_button_text": "Apply Discount",
+    "discount_percent": 20
+  }
+}
+```
+
+If no offer is configured for the given reason, the `offer` field will be `null`.
+
+### Get Available Offers
+
+Retrieve the retention offer for a specific cancel reason without submitting a cancellation.
+
+```bash
+curl https://api.windbackai.com/api/v1/cancel-flow/offers?reason=too_expensive \
+  -H "X-API-Key: pub_your_public_key"
+```
+
+**Response:**
+
+```json
+{
+  "reason": "too_expensive",
+  "offer": {
+    "offer_type": "discount",
+    "title": "Stay for 20% Less",
+    "description": "We'd hate to see you go. Here's 20% off your next 3 months.",
+    "cta_button_text": "Apply Discount",
+    "discount_percent": 20
+  }
+}
+```
+
+### Accept an Offer
+
+Record that the customer accepted the retention offer.
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/cancel-flow/accept-offer \
+  -H "X-API-Key: pub_your_public_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cancel_flow_id": "cf_abc123",
+    "customer_email": "jane@example.com"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "status": "offer_accepted",
+  "cancel_flow_id": "cf_abc123",
+  "message": "The discount has been applied. A confirmation email will be sent."
+}
+```
+
+## SDK Usage
+
+<CodeGroup>
+
+```javascript Node.js
+import Windback from "@windbackai/node";
+
+const wb = new Windback({ apiKey: "pub_your_public_key" });
+
+// 1. Submit cancellation reason
+const { cancel_flow_id, offer } = await wb.cancelFlow.submit({
+  customerEmail: "jane@example.com",
+  reason: "too_expensive",
+  feedback: "Budget was cut this quarter.",
+});
+
+// 2. Show offer in your UI...
+
+// 3. If customer accepts
+await wb.cancelFlow.acceptOffer({
+  cancelFlowId: cancel_flow_id,
+  customerEmail: "jane@example.com",
+});
+```
+
+```python Python
+from windback import Windback
+
+wb = Windback(api_key="pub_your_public_key")
+
+# 1. Submit cancellation reason
+result = wb.cancel_flow.submit(
+    customer_email="jane@example.com",
+    reason="too_expensive",
+    feedback="Budget was cut this quarter.",
+)
+
+# 2. Show offer in your UI...
+
+# 3. If customer accepts
+wb.cancel_flow.accept_offer(
+    cancel_flow_id=result["cancel_flow_id"],
+    customer_email="jane@example.com",
+)
+```
+
+</CodeGroup>
+
+## Configuring Retention Offers
+
+Each cancel reason can have a retention offer mapped to it. Configure offers in the dashboard under **Settings > Retention Offers**, or use the [Retention Offers API](/features/retention-offers).
+
+<Tip>Start by configuring offers for your top two or three cancellation reasons. You can see which reasons are most common in the **Cancel Flow** analytics section of your dashboard.</Tip>
+
+## Graceful Degradation
+
+The Cancel Flow API is designed to work even when a customer's subscription has already expired. If you call the endpoints after the subscription is no longer active:
+
+- The cancellation reason and feedback are still captured.
+- A retention offer is still returned (if configured).
+- Accepting the offer will flag the customer for manual follow-up by your team.
+
+<Info>This means you can safely integrate the Cancel Flow into post-cancellation surveys and win-back pages without worrying about subscription state.</Info>

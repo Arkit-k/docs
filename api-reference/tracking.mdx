@@ -1,0 +1,179 @@
+---
+title: "Event Tracking"
+description: "Track customer behavior events for churn prediction."
+---
+
+# Event Tracking
+
+Track customer behavior events to improve churn prediction accuracy and personalize recovery emails. The more behavioral data Windback has, the better it can predict churn risk and tailor recovery strategies.
+
+## Endpoint
+
+```
+POST /api/v1/track
+```
+
+Authenticated with your secret API key via the `X-API-Key` header.
+
+## Single Event
+
+### Request Body
+
+<ParamField body="event" type="string" required>
+  The event name. Use one of the supported event types below or a custom name.
+</ParamField>
+
+<ParamField body="customer_email" type="string" required>
+  The customer's email address. Used to associate the event with a customer.
+</ParamField>
+
+<ParamField body="properties" type="object">
+  Arbitrary key-value pairs with additional event data.
+</ParamField>
+
+<ParamField body="timestamp" type="string">
+  ISO 8601 timestamp. Defaults to the current time if omitted.
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/track \
+  -H "X-API-Key: sk_live_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "feature_used",
+    "customer_email": "jane@example.com",
+    "properties": {
+      "feature": "exports",
+      "plan": "pro"
+    },
+    "timestamp": "2025-12-01T10:00:00Z"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "status": "ok"
+}
+```
+
+## Batch Events
+
+Send multiple events in a single request for better performance.
+
+### Request Body
+
+<ParamField body="events" type="array" required>
+  Array of event objects, each with `event`, `customer_email`, and optional `properties` and `timestamp`.
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/track \
+  -H "X-API-Key: sk_live_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "event": "login",
+        "customer_email": "jane@example.com",
+        "timestamp": "2025-12-01T09:00:00Z"
+      },
+      {
+        "event": "feature_used",
+        "customer_email": "jane@example.com",
+        "properties": { "feature": "dashboard" },
+        "timestamp": "2025-12-01T09:05:00Z"
+      },
+      {
+        "event": "support_ticket_opened",
+        "customer_email": "jane@example.com",
+        "properties": { "subject": "Cannot export data" },
+        "timestamp": "2025-12-01T09:30:00Z"
+      }
+    ]
+  }'
+```
+
+## Supported Event Types
+
+These event types are recognized by the churn prediction engine:
+
+| Event | Description | Churn Signal |
+|---|---|---|
+| `login` | Customer logged in | Positive |
+| `feature_used` | Customer used a feature | Positive |
+| `subscription_renewed` | Subscription renewed | Positive |
+| `subscription_upgraded` | Customer upgraded plan | Positive |
+| `subscription_downgraded` | Customer downgraded plan | Negative |
+| `support_ticket_opened` | Customer opened a support ticket | Neutral/Negative |
+| `support_ticket_resolved` | Support ticket was resolved | Positive |
+| `invoice_paid` | Invoice was paid | Positive |
+| `invoice_overdue` | Invoice is overdue | Negative |
+| `nps_response` | Customer submitted NPS score | Varies by score |
+| `trial_started` | Customer started a trial | Neutral |
+| `trial_ended` | Trial period ended | Neutral |
+| `refund_requested` | Customer requested a refund | Negative |
+
+<Info>
+You can send custom event names beyond this list. Custom events are stored and available in analytics but are not used by the churn prediction model until they have sufficient volume for pattern detection.
+</Info>
+
+## JavaScript Snippet
+
+Track events from your frontend using this lightweight snippet:
+
+```javascript
+// Windback tracking helper
+function trackWindback(event, email, properties) {
+  fetch("https://api.windbackai.com/api/v1/track", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-Key": "sk_live_your_secret_key",
+    },
+    body: JSON.stringify({
+      event,
+      customer_email: email,
+      properties,
+    }),
+  }).catch(() => {}); // Fire and forget
+}
+
+// Usage
+trackWindback("feature_used", "jane@example.com", {
+  feature: "exports",
+  plan: "pro",
+});
+```
+
+<Warning>
+The example above exposes your secret key in client-side code. For production, proxy tracking calls through your backend server to keep the secret key secure.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Track high-signal events first">
+    Start with `login`, `feature_used`, and `subscription_downgraded`. These have the strongest correlation with churn prediction accuracy.
+  </Accordion>
+  <Accordion title="Use consistent event names">
+    Use `snake_case` for event names. Avoid variations like `featureUsed` vs `feature_used` --- the system treats them as different events.
+  </Accordion>
+  <Accordion title="Include meaningful properties">
+    Properties like `feature`, `plan`, `duration_seconds`, and `page` add context that improves churn prediction. Avoid sending PII in properties beyond the customer email.
+  </Accordion>
+  <Accordion title="Send events in real time">
+    Track events as they happen for the most accurate churn risk scores. If batching, keep the delay under 1 hour.
+  </Accordion>
+  <Accordion title="Use batch for historical imports">
+    When importing historical data, use the batch format with explicit timestamps. Send up to 100 events per batch request.
+  </Accordion>
+  <Accordion title="Handle failures gracefully">
+    The tracking endpoint is designed for fire-and-forget usage. If a request fails, it is safe to retry or drop --- the churn model handles missing data gracefully.
+  </Accordion>
+</AccordionGroup>

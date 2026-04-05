@@ -1,0 +1,183 @@
+---
+title: "Recovery"
+description: "Generate and send AI recovery email variants."
+---
+
+# Recovery
+
+Windback generates 9 AI-powered recovery email variants for each churn event, each using a different psychological strategy. You can review, edit, and send variants through the API.
+
+## 9 Recovery Strategies
+
+Each churn event generates one variant per strategy:
+
+| Strategy | Description | Best For |
+|---|---|---|
+| `value_recap` | Remind customer of key value they received | Long-tenure customers, competitor switchers |
+| `unused_feature` | Highlight features the customer never tried | Low-engagement customers |
+| `downgrade_offer` | Offer a cheaper plan instead of canceling | Price-sensitive customers |
+| `pause_option` | Suggest pausing the subscription temporarily | Temporary budget constraints |
+| `founder_email` | Personal email from the founder/CEO | High-MRR customers, bad experience |
+| `pain_point_fix` | Address the specific issue that caused churn | Missing feature, bug reports |
+| `social_proof` | Share success stories from similar customers | Uncertain customers |
+| `feedback_request` | Ask for feedback with an incentive to return | No clear reason, generic cancellations |
+| `discount` | Offer a time-limited discount to stay | Price-sensitive, short-tenure customers |
+
+<Info>
+The AI selects and ranks strategies based on the cancel reason, customer tenure, MRR, and behavioral data. All 9 variants are generated, but the recommended variant is highlighted in the dashboard.
+</Info>
+
+---
+
+## Generate Recovery Variants
+
+Generate 9 AI recovery email variants for a churn event.
+
+```
+POST /projects/:slug/churn-events/:id/generate
+```
+
+### Example Request
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/projects/my-project/churn-events/evt_abc123/generate \
+  -H "X-API-Key: sk_live_abc123..."
+```
+
+### Example Response
+
+```json
+{
+  "data": {
+    "event_id": "evt_abc123",
+    "status": "variants_generated",
+    "variants": [
+      {
+        "id": "var_001",
+        "strategy": "value_recap",
+        "subject": "Jane, here's what you accomplished with us",
+        "body": "Hi Jane,\n\nOver the past 6 months, your team has...",
+        "status": "draft",
+        "recommended": true
+      },
+      {
+        "id": "var_002",
+        "strategy": "unused_feature",
+        "subject": "Jane, you haven't tried our best feature yet",
+        "body": "Hi Jane,\n\nDid you know that Team Pro includes...",
+        "status": "draft",
+        "recommended": false
+      },
+      {
+        "id": "var_003",
+        "strategy": "downgrade_offer",
+        "subject": "What if we could cut your bill in half?",
+        "body": "Hi Jane,\n\nI understand budget is a concern...",
+        "status": "draft",
+        "recommended": false
+      }
+    ]
+  }
+}
+```
+
+<Note>
+Generation typically takes 5-15 seconds. The event status changes to `processing` immediately and `variants_generated` when complete. You can poll the event endpoint or use the dashboard for real-time updates.
+</Note>
+
+---
+
+## Send a Variant
+
+Send a specific recovery email variant to the customer.
+
+```
+POST /projects/:slug/churn-events/:id/variants/:vid/send
+```
+
+### Example Request
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/projects/my-project/churn-events/evt_abc123/variants/var_001/send \
+  -H "X-API-Key: sk_live_abc123..."
+```
+
+### Example Response
+
+```json
+{
+  "data": {
+    "variant_id": "var_001",
+    "status": "sent",
+    "sent_at": "2025-12-01T10:30:00Z",
+    "recipient": "jane@example.com"
+  }
+}
+```
+
+<Warning>
+Each variant can only be sent once. Attempting to resend a variant returns a `409 Conflict` error.
+</Warning>
+
+---
+
+## Update a Variant
+
+Edit a variant's subject or body before sending.
+
+```
+PATCH /projects/:slug/churn-events/:id/variants/:vid
+```
+
+### Request Body
+
+<ParamField body="subject" type="string">
+  Updated email subject line.
+</ParamField>
+
+<ParamField body="body" type="string">
+  Updated email body (plain text or HTML).
+</ParamField>
+
+### Example Request
+
+```bash
+curl -X PATCH https://api.windbackai.com/api/v1/projects/my-project/churn-events/evt_abc123/variants/var_001 \
+  -H "X-API-Key: sk_live_abc123..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "subject": "Jane, we have a special offer for you",
+    "body": "Hi Jane,\n\nAs a valued customer for 6 months..."
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "data": {
+    "id": "var_001",
+    "strategy": "value_recap",
+    "subject": "Jane, we have a special offer for you",
+    "body": "Hi Jane,\n\nAs a valued customer for 6 months...",
+    "status": "draft",
+    "updated_at": "2025-12-01T10:15:00Z"
+  }
+}
+```
+
+<Tip>
+Edit the AI-generated variants to add personal touches or company-specific offers. The AI provides a strong starting point; your domain knowledge makes it great.
+</Tip>
+
+---
+
+## Variant Statuses
+
+| Status | Description |
+|---|---|
+| `draft` | Generated but not yet sent |
+| `sent` | Email sent to customer |
+| `opened` | Customer opened the email (tracked via pixel) |
+| `clicked` | Customer clicked a link in the email |
+| `bounced` | Email bounced (invalid address) |

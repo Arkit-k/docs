@@ -1,0 +1,72 @@
+---
+title: "Multi-Project Setup"
+description: "Manage multiple SaaS products under one Windback account."
+---
+
+# Multi-Project Setup
+
+Windback supports multiple projects under a single account. Each project has its own API keys, webhook URLs, churn events, and settings — ideal for managing multiple SaaS products or environments.
+
+## How Projects Work
+
+- Each project is identified by a unique **slug** (e.g., `my-saas-app`)
+- API keys are scoped to a single project
+- All data (events, templates, analytics) is isolated per project
+- Team members can be invited per project
+
+## Creating a Project
+
+### Via Dashboard
+
+1. Go to **Dashboard > Projects**
+2. Click **New Project**
+3. Enter a name and product type
+4. Copy your API keys
+
+### Via API
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/projects \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My SaaS", "product_type": "SaaS"}'
+```
+
+Response includes `raw_public_key` and `raw_secret_key` — save these immediately as they won't be shown again.
+
+## Project-Scoped API Calls
+
+All project endpoints use the project slug in the path:
+
+```
+/api/v1/projects/:slug/churn-events
+/api/v1/projects/:slug/stats
+/api/v1/projects/:slug/retention-offers
+```
+
+When using an API key, the project is automatically resolved from the key — no slug needed in the SDK:
+
+```javascript
+const windback = new Windback({ apiKey: "sk_live_..." });
+// Automatically scoped to the project this key belongs to
+await windback.trackEvent({ ... });
+```
+
+## Connecting Payment Providers
+
+Each project has its own webhook URL:
+
+```
+https://api.windbackai.com/api/v1/webhooks/stripe/<project_public_key>
+```
+
+You can connect different payment providers to different projects.
+
+## Plan Limits
+
+| Plan | Max Projects |
+|---|---|
+| Starter (Free) | 1 |
+| Growth | 5 |
+| Enterprise | 15 |
+| Scale | Unlimited |

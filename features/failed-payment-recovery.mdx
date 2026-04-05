@@ -1,0 +1,202 @@
+---
+title: "Failed Payment Recovery"
+description: "Automatically recover failed payments with smart dunning sequences."
+---
+
+# Failed Payment Recovery
+
+Windback detects failed payments from your billing provider and runs a smart dunning sequence to recover the revenue automatically.
+
+## How Dunning Works
+
+<Steps>
+  <Step title="Detect">
+    Windback receives a webhook from your payment provider when a payment fails (e.g., `invoice.payment_failed` from Stripe).
+  </Step>
+  <Step title="Create Record">
+    A payment failure record is created for the customer, capturing the amount, currency, failure reason, and attempt count.
+  </Step>
+  <Step title="Dunning Sequence">
+    Windback begins a configurable retry sequence. Each retry is spaced according to your `retry_interval_hours` setting.
+  </Step>
+  <Step title="AI Emails">
+    Between retries, Windback sends AI-generated emails to the customer encouraging them to update their payment method. The tone escalates across the sequence based on your `tone_sequence` setting.
+  </Step>
+  <Step title="Resolution">
+    The process ends when the payment succeeds (status: `recovered`), or all retries are exhausted (status: `abandoned`).
+  </Step>
+</Steps>
+
+## Supported Webhook Events
+
+Windback listens for the following events from your payment provider:
+
+| Provider | Failure Event | Success Event |
+|----------|--------------|---------------|
+| **Stripe** | `invoice.payment_failed` | `invoice.payment_succeeded` |
+| **Razorpay** | `payment.failed` | `invoice.payment_succeeded` |
+
+<Note>When Windback receives a success event for a customer with an active dunning sequence, the sequence is stopped automatically and the record is marked as `recovered`.</Note>
+
+## Payment Failure Statuses
+
+| Status | Description |
+|--------|-------------|
+| `failing` | The payment has failed and a dunning sequence is in progress |
+| `recovered` | The payment was successfully collected after one or more retries |
+| `abandoned` | All retries have been exhausted without a successful payment |
+
+## Dashboard Overview
+
+The **Failed Payments** page in your project dashboard shows:
+
+<CardGroup cols={2}>
+  <Card title="Recovery Stats">
+    Total failed payments, recovery rate, and revenue recovered over the selected time range.
+  </Card>
+  <Card title="Active Sequences">
+    Customers currently in a dunning sequence with their status, retry count, and next retry time.
+  </Card>
+  <Card title="Failure Breakdown">
+    Common failure reasons (card declined, insufficient funds, expired card) with counts.
+  </Card>
+  <Card title="Email Performance">
+    Open rates and click-through rates for dunning emails, broken down by sequence step.
+  </Card>
+</CardGroup>
+
+## API Endpoints
+
+### List Payment Failures
+
+```bash
+curl https://api.windbackai.com/api/v1/projects/:slug/payment-failures \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response:**
+
+```json
+{
+  "failures": [
+    {
+      "id": "pf_abc123",
+      "customer_email": "jane@example.com",
+      "amount": 4900,
+      "currency": "usd",
+      "status": "failing",
+      "failure_reason": "card_declined",
+      "attempts": 2,
+      "max_retries": 4,
+      "next_retry_at": "2026-04-05T14:00:00Z",
+      "created_at": "2026-04-02T10:00:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+### Get Failure Detail
+
+```bash
+curl https://api.windbackai.com/api/v1/projects/:slug/payment-failures/:id \
+  -H "Authorization: Bearer <token>"
+```
+
+### Retry a Payment Manually
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/projects/:slug/payment-failures/:id/retry \
+  -H "Authorization: Bearer <token>"
+```
+
+<Warning>Manual retries count toward the `max_retries` limit. If the limit has already been reached, the request will return a `409 Conflict`.</Warning>
+
+### Get Recovery Stats
+
+```bash
+curl https://api.windbackai.com/api/v1/projects/:slug/payment-failures/stats \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response:**
+
+```json
+{
+  "total_failures": 142,
+  "recovered": 98,
+  "abandoned": 31,
+  "active": 13,
+  "recovery_rate": 0.69,
+  "revenue_recovered": 487500,
+  "currency": "usd"
+}
+```
+
+## Dunning Configuration
+
+### Get Current Config
+
+```bash
+curl https://api.windbackai.com/api/v1/projects/:slug/dunning-config \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response:**
+
+```json
+{
+  "enabled": true,
+  "max_retries": 4,
+  "retry_interval_hours": 72,
+  "tone_sequence": ["friendly", "professional", "urgent", "final"],
+  "send_emails": true,
+  "sender_name": "Billing Team"
+}
+```
+
+### Update Config
+
+```bash
+curl -X PUT https://api.windbackai.com/api/v1/projects/:slug/dunning-config \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "max_retries": 4,
+    "retry_interval_hours": 72,
+    "tone_sequence": ["friendly", "professional", "urgent", "final"],
+    "send_emails": true
+  }'
+```
+
+### Configuration Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | `true` | Whether dunning is active |
+| `max_retries` | integer | `4` | Maximum number of payment retry attempts |
+| `retry_interval_hours` | integer | `72` | Hours between each retry attempt |
+| `tone_sequence` | string[] | `["friendly","professional","urgent","final"]` | Email tone for each step in the sequence |
+| `send_emails` | boolean | `true` | Whether to send dunning emails to the customer |
+| `sender_name` | string | `"Billing Team"` | Display name on dunning emails |
+
+<Tip>A `retry_interval_hours` of 72 (3 days) works well for most SaaS products. Shorter intervals can feel aggressive; longer intervals risk the customer forgetting about the issue.</Tip>
+
+## Setup Instructions
+
+<Steps>
+  <Step title="Connect Your Payment Provider">
+    Add the Windback webhook URL to your payment provider. See [Quickstart](/quickstart) for the full URL format.
+  </Step>
+  <Step title="Verify Sender Domain">
+    Dunning emails require a verified sender domain. Go to **Settings > Email** in your project dashboard to configure one.
+  </Step>
+  <Step title="Configure Dunning Settings">
+    Navigate to **Settings > Failed Payments** or use the API above to set your retry count, interval, and tone sequence.
+  </Step>
+  <Step title="Test with a Failing Payment">
+    Use your payment provider's test mode to trigger a `payment_failed` event and confirm the dunning sequence starts.
+  </Step>
+</Steps>
+
+<Info>Windback never initiates actual payment charges. Retries are triggered through your payment provider's API, so all charges follow your existing billing rules and PCI compliance setup.</Info>

@@ -1,0 +1,130 @@
+---
+title: "Custom Webhook"
+description: "Connect any payment provider via custom webhook."
+---
+
+# Custom Webhook
+
+Use the custom webhook endpoint to connect any payment provider, billing system, or internal tool to Windback.
+
+## Endpoint
+
+```
+POST https://api.windbackai.com/api/v1/webhooks/custom/<your_public_key>
+```
+
+Your public key starts with `pub_` and is found in **Settings > API Keys**.
+
+## Payload Format
+
+Send a JSON body with the following fields:
+
+<ParamField body="customer_email" type="string" required>
+  The customer's email address. Used to identify the customer and send recovery emails.
+</ParamField>
+
+<ParamField body="customer_name" type="string">
+  The customer's display name. Falls back to the email prefix if omitted.
+</ParamField>
+
+<ParamField body="event_type" type="string" required>
+  The type of churn event. One of: `cancellation`, `payment_failed`, `payment_recovered`.
+</ParamField>
+
+<ParamField body="cancel_reason" type="string">
+  Free-text reason for cancellation. Windback AI uses this to select the optimal recovery strategy.
+</ParamField>
+
+<ParamField body="mrr" type="integer">
+  Monthly recurring revenue in cents (e.g., `2999` for $29.99).
+</ParamField>
+
+<ParamField body="currency" type="string">
+  ISO 4217 currency code (e.g., `usd`, `eur`, `inr`). Defaults to `usd`.
+</ParamField>
+
+<ParamField body="provider" type="string">
+  Name of your payment provider (e.g., `paddle`, `lemonsqueezy`, `internal`). Used for analytics grouping.
+</ParamField>
+
+<ParamField body="plan_name" type="string">
+  The name of the subscription plan the customer was on.
+</ParamField>
+
+<ParamField body="tenure_days" type="integer">
+  Number of days the customer has been subscribed. Used to personalize recovery messaging.
+</ParamField>
+
+## Cancel Reason to AI Strategy Mapping
+
+When a cancel reason is provided, Windback AI maps it to the most effective recovery strategy:
+
+| Cancel Reason (keywords) | AI Strategy | Description |
+|---|---|---|
+| "too expensive", "cost", "price" | `discount` | Offer a discount or downgrade |
+| "not using", "don't use" | `unused_feature` | Highlight unused features |
+| "missing feature", "need X" | `pain_point_fix` | Address the specific gap |
+| "switching", "competitor", "alternative" | `value_recap` | Recap unique value props |
+| "temporary", "pause", "break" | `pause_option` | Offer a subscription pause |
+| "bad experience", "bug", "broken" | `founder_email` | Personal outreach from founder |
+| "no reason", empty, generic | `feedback_request` | Ask for feedback with incentive |
+
+<Info>
+The AI considers the cancel reason alongside customer tenure, MRR, and behavioral data to select the best combination of strategies. The table above shows the primary strategy; all 9 variants are still generated.
+</Info>
+
+## Example Request
+
+```bash
+curl -X POST https://api.windbackai.com/api/v1/webhooks/custom/pub_your_key \
+  -H "Content-Type: application/json" \
+  -d '{
+    "customer_email": "jane@example.com",
+    "customer_name": "Jane Smith",
+    "event_type": "cancellation",
+    "cancel_reason": "Too expensive for our team size",
+    "mrr": 4999,
+    "currency": "usd",
+    "provider": "paddle",
+    "plan_name": "Team Pro",
+    "tenure_days": 180
+  }'
+```
+
+## Response
+
+The endpoint always returns HTTP 200 with a JSON body:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+## Webhook Resilience
+
+<Info>
+The custom webhook endpoint **always returns HTTP 200** regardless of internal processing status. This prevents your system from treating transient errors as failures.
+</Info>
+
+Events are queued and processed asynchronously. If processing fails internally, events are retried automatically.
+
+## Event Type Mapping
+
+| `event_type` Value | Windback Behavior |
+|---|---|
+| `cancellation` | Creates a voluntary churn event, triggers AI recovery |
+| `payment_failed` | Creates an involuntary churn event, triggers dunning flow |
+| `payment_recovered` | Marks a previous churn event as recovered |
+
+<Warning>
+The `customer_email` and `event_type` fields are required. Requests missing these fields will still return 200 but will be silently dropped.
+</Warning>
+
+## Batch Sending
+
+To send multiple events at once, make individual POST requests for each event. A batch endpoint is planned for a future release.
+
+<Tip>
+Use the custom webhook for providers like Paddle, Lemon Squeezy, Dodo Payments, Chargebee, or your own internal billing system.
+</Tip>

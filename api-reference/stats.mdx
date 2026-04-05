@@ -1,0 +1,85 @@
+---
+title: "Stats"
+description: "Get churn statistics and recovery metrics."
+---
+
+# Stats
+
+Retrieve churn statistics and recovery metrics for a project.
+
+## Get Project Stats
+
+```
+GET /projects/:slug/stats
+```
+
+### Example Request
+
+```bash
+curl https://api.windbackai.com/api/v1/projects/my-project/stats \
+  -H "X-API-Key: sk_live_abc123..."
+```
+
+### Example Response
+
+```json
+{
+  "data": {
+    "total_events": 342,
+    "recovered": 89,
+    "lost": 198,
+    "processing": 55,
+    "recovery_rate": 31.0,
+    "total_mrr_cents": 1520000,
+    "recovered_mrr_cents": 471200
+  }
+}
+```
+
+### Response Fields
+
+<ResponseField name="total_events" type="integer">
+  Total number of churn events created for this project across all time.
+</ResponseField>
+
+<ResponseField name="recovered" type="integer">
+  Number of churn events where the customer reactivated or payment succeeded.
+</ResponseField>
+
+<ResponseField name="lost" type="integer">
+  Number of churn events where the recovery window expired without reactivation.
+</ResponseField>
+
+<ResponseField name="processing" type="integer">
+  Number of churn events currently being processed (status: `new`, `processing`, `variants_generated`, or `email_sent`).
+</ResponseField>
+
+<ResponseField name="recovery_rate" type="float">
+  Percentage of resolved events that were recovered. Calculated as `recovered / (recovered + lost) * 100`. Returns `0` if no events have been resolved.
+</ResponseField>
+
+<ResponseField name="total_mrr_cents" type="integer">
+  Total MRR at risk across all churn events, in cents. Sum of `mrr` from all events.
+</ResponseField>
+
+<ResponseField name="recovered_mrr_cents" type="integer">
+  Total MRR recovered, in cents. Sum of `mrr` from recovered events.
+</ResponseField>
+
+## Understanding the Metrics
+
+<AccordionGroup>
+  <Accordion title="Recovery Rate">
+    The recovery rate only considers **resolved** events (recovered + lost). Events still in processing are excluded to avoid skewing the metric. A healthy recovery rate for SaaS companies is typically 10-30%.
+  </Accordion>
+  <Accordion title="MRR Calculation">
+    MRR values are stored in cents to avoid floating-point issues. To display in dollars, divide by 100. Events without an `mrr` value are excluded from MRR calculations but still count toward event totals.
+  </Accordion>
+  <Accordion title="Processing Events">
+    Processing events include all active states: `new`, `processing`, `variants_generated`, and `email_sent`. These are events that still have a chance of being recovered.
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+Use the stats endpoint to build custom dashboards or feed recovery metrics into your existing analytics tools.
+</Tip>

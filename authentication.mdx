@@ -1,0 +1,63 @@
+---
+title: "Authentication"
+description: "How to authenticate with the Windback API."
+---
+
+# Authentication
+
+Windback supports two authentication methods depending on your use case.
+
+## JWT Bearer Token
+
+Used by the dashboard and web app. Obtained via login or OAuth.
+
+```bash
+curl https://api.windbackai.com/api/v1/auth/me \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
+```
+
+## API Keys
+
+Each project has two API keys:
+
+| Type | Prefix | Used For |
+|---|---|---|
+| **Public** | `pub_` | Widget, cancel flow, webhook URLs |
+| **Secret** | `sk_` | Server-side SDK calls, full API access |
+
+Pass the secret key via the `X-API-Key` header:
+
+```bash
+curl https://api.windbackai.com/api/v1/projects/my-project/churn-events \
+  -H "X-API-Key: sk_live_abc123..."
+```
+
+## When to Use Which
+
+| Scenario | Auth Method |
+|---|---|
+| Dashboard / web app | JWT (automatic) |
+| Server-side SDK | Secret API key (`sk_`) |
+| Cancel flow widget | Public API key (`pub_`) |
+| Webhook endpoints | Public API key in URL |
+| Email tracking pixels | No auth (opaque IDs) |
+
+## Security Best Practices
+
+<Warning>
+Never expose your secret key (`sk_`) in client-side code, public repositories, or browser requests.
+</Warning>
+
+- Rotate keys regularly from **Settings > API Keys**
+- Use the public key for client-facing integrations
+- Configure **Allowed Origins** to restrict which domains can use your public key
+- Enable **2FA** on your account for added security
+
+## Rate Limits
+
+| Endpoint Group | Limit |
+|---|---|
+| Auth (login, register) | 5 req/s, burst 10 |
+| Cancel flow | 10 req/15s per key |
+| Event tracking | Plan-based per key |
+| General API | 10 req/s, burst 30 |

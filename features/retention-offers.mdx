@@ -1,0 +1,228 @@
+---
+title: "Retention Offers"
+description: "Configure targeted offers shown to customers when they try to cancel."
+---
+
+# Retention Offers
+
+Retention offers are the incentives Windback shows to customers during the [Cancel Flow](/features/cancel-flow). Each cancellation reason can have its own offer, so the customer sees something relevant to why they want to leave.
+
+## How Offer Matching Works
+
+When a customer submits a cancellation reason through the Cancel Flow, Windback looks up the retention offer configured for that reason. If an active offer exists, it is returned in the API response for your app to display. If no offer is configured (or the offer is inactive), the response returns `offer: null` and the cancellation proceeds without an intervention.
+
+## Offer Types
+
+Windback supports five offer types:
+
+| Offer Type | Description | Use Case |
+|-----------|-------------|----------|
+| `discount` | A percentage discount applied to upcoming invoices | Customer says the product is too expensive |
+| `extension` | Free extra days added to the current billing period | Customer wants a temporary pause or more time |
+| `downgrade` | Move the customer to a lower-tier plan automatically | Customer is not using enough to justify current plan |
+| `feature_unlock` | Temporarily unlock a premium feature for the customer | Customer is missing a specific feature |
+| `custom` | Free-form offer with custom title and description | Any situation that doesn't fit the standard types |
+
+## Offer Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `offer_type` | string | Yes | One of: `discount`, `extension`, `downgrade`, `feature_unlock`, `custom` |
+| `title` | string | Yes | Short headline shown to the customer (e.g., "Stay for 20% Less") |
+| `description` | string | Yes | Longer explanation of the offer |
+| `cta_button_text` | string | Yes | Text for the accept button (e.g., "Apply Discount") |
+| `discount_percent` | integer | No | Percentage discount (only for `discount` type, 1-100) |
+| `extension_days` | integer | No | Number of free days (only for `extension` type) |
+| `is_active` | boolean | Yes | Whether this offer is currently shown to customers |
+
+## Dashboard Configuration
+
+You can configure retention offers in the dashboard without writing any code:
+
+1. Go to **Settings > Retention Offers** in your project.
+2. Each cancellation reason is listed with its current offer (or "No offer configured").
+3. Click a reason to create or edit its offer.
+4. Toggle `is_active` to enable or disable an offer without deleting it.
+
+<Tip>Use the `is_active` toggle to run A/B tests -- disable an offer for a week and compare cancellation rates.</Tip>
+
+## API Endpoints
+
+### List All Retention Offers
+
+```bash
+curl https://api.windbackai.com/api/v1/projects/:slug/retention-offers \
+  -H "Authorization: Bearer <token>"
+```
+
+**Response:**
+
+```json
+{
+  "offers": [
+    {
+      "reason": "too_expensive",
+      "offer_type": "discount",
+      "title": "Stay for 20% Less",
+      "description": "We'd hate to see you go. Here's 20% off your next 3 months.",
+      "cta_button_text": "Apply Discount",
+      "discount_percent": 20,
+      "is_active": true
+    },
+    {
+      "reason": "missing_features",
+      "offer_type": "feature_unlock",
+      "title": "Try Premium Features Free",
+      "description": "We just shipped new features you might like. Unlock them free for 14 days.",
+      "cta_button_text": "Unlock Features",
+      "is_active": true
+    }
+  ]
+}
+```
+
+### Create or Update an Offer
+
+```bash
+curl -X PUT https://api.windbackai.com/api/v1/projects/:slug/retention-offers/:reason \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "offer_type": "discount",
+    "title": "Stay for 20% Less",
+    "description": "Here'\''s 20% off your next 3 months.",
+    "cta_button_text": "Apply Discount",
+    "discount_percent": 20,
+    "is_active": true
+  }'
+```
+
+<Note>The `:reason` path parameter must be one of the eight standard cancel reasons (e.g., `too_expensive`, `missing_features`). See the [Cancel Flow](/features/cancel-flow#cancel-reasons) docs for the full list.</Note>
+
+### Delete an Offer
+
+```bash
+curl -X DELETE https://api.windbackai.com/api/v1/projects/:slug/retention-offers/:reason \
+  -H "Authorization: Bearer <token>"
+```
+
+Returns `204 No Content` on success. After deletion, customers who cancel with this reason will not see an offer.
+
+## Example Configuration
+
+Here is a recommended offer for each cancellation reason:
+
+<AccordionGroup>
+  <Accordion title="too_expensive">
+    ```json
+    {
+      "offer_type": "discount",
+      "title": "Stay for 20% Less",
+      "description": "We'd hate to see you go. Here's 20% off your next 3 months.",
+      "cta_button_text": "Apply Discount",
+      "discount_percent": 20,
+      "is_active": true
+    }
+    ```
+  </Accordion>
+  <Accordion title="missing_features">
+    ```json
+    {
+      "offer_type": "feature_unlock",
+      "title": "Try Premium Features Free",
+      "description": "We just shipped new features you might like. Unlock them free for 14 days.",
+      "cta_button_text": "Unlock Features",
+      "is_active": true
+    }
+    ```
+  </Accordion>
+  <Accordion title="switched_to_competitor">
+    ```json
+    {
+      "offer_type": "discount",
+      "title": "We'll Match It",
+      "description": "Tell us what the other product offers and we'll see what we can do. Here's 25% off while we chat.",
+      "cta_button_text": "Claim Discount",
+      "discount_percent": 25,
+      "is_active": true
+    }
+    ```
+  </Accordion>
+  <Accordion title="not_using_enough">
+    ```json
+    {
+      "offer_type": "downgrade",
+      "title": "Switch to a Lighter Plan",
+      "description": "Our Starter plan might be a better fit. Keep your data and pay less.",
+      "cta_button_text": "Downgrade Plan",
+      "is_active": true
+    }
+    ```
+  </Accordion>
+  <Accordion title="technical_issues">
+    ```json
+    {
+      "offer_type": "extension",
+      "title": "30 Days on Us",
+      "description": "We're sorry about the issues. Here's 30 free days while our team investigates.",
+      "cta_button_text": "Add 30 Free Days",
+      "extension_days": 30,
+      "is_active": true
+    }
+    ```
+  </Accordion>
+  <Accordion title="bad_support">
+    ```json
+    {
+      "offer_type": "extension",
+      "title": "14 Days Free + Priority Support",
+      "description": "We'll assign you a dedicated support contact and add 14 free days to your account.",
+      "cta_button_text": "Get Priority Support",
+      "extension_days": 14,
+      "is_active": true
+    }
+    ```
+  </Accordion>
+  <Accordion title="temporary_pause">
+    ```json
+    {
+      "offer_type": "extension",
+      "title": "Pause for 30 Days",
+      "description": "No charge for 30 days. Your account and data stay exactly as they are.",
+      "cta_button_text": "Pause My Account",
+      "extension_days": 30,
+      "is_active": true
+    }
+    ```
+  </Accordion>
+  <Accordion title="other">
+    ```json
+    {
+      "offer_type": "custom",
+      "title": "Let's Talk",
+      "description": "We'd love to understand what's going on. Reply to this or book a call and we'll figure it out together.",
+      "cta_button_text": "Book a Call",
+      "is_active": true
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+| Cancel Reason | Recommended Offer | Why It Works |
+|--------------|-------------------|--------------|
+| `too_expensive` | 20% discount | Directly addresses the cost objection without deep discounting |
+| `missing_features` | Feature unlock (14 days) | Lets the customer try before re-committing |
+| `switched_to_competitor` | 25% discount | Buys time to understand the competitive gap |
+| `not_using_enough` | Downgrade to a lighter plan | Reduces cost while keeping the customer in your ecosystem |
+| `technical_issues` | 30-day extension | Shows good faith while your team fixes the problem |
+| `bad_support` | 14-day extension + priority support | Addresses the root cause with a concrete improvement |
+| `temporary_pause` | 30-day extension | Exactly what the customer asked for |
+| `other` | Custom "book a call" | Opens a conversation to discover the real reason |
+
+<Warning>Avoid offering large discounts (40%+) as a default. They set a precedent and can train customers to threaten cancellation for a deal.</Warning>
+
+## Analytics
+
+<Info>Retention offer analytics -- including acceptance rates, revenue saved per reason, and A/B test results -- are coming soon. Today you can view offer outcomes in the **Cancel Flow** event log in the dashboard.</Info>

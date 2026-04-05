@@ -1,0 +1,122 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Windback",
+  "colors": {
+    "primary": "#0004E0",
+    "light": "#4A5FFF",
+    "dark": "#0004E0"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "authentication",
+              "data-security",
+              "multi-project"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/churn-risk",
+              "features/churn-risk-webhook",
+              "features/failed-payment-recovery",
+              "features/cancel-flow",
+              "features/retention-offers"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/stripe",
+              "integrations/razorpay",
+              "integrations/custom-webhook"
+            ]
+          },
+          {
+            "group": "Widget",
+            "pages": [
+              "widget/installation",
+              "widget/customization"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "API Reference",
+            "pages": [
+              "api-reference/overview",
+              "api-reference/churn-events",
+              "api-reference/recovery",
+              "api-reference/stats",
+              "api-reference/tracking"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDKs",
+        "groups": [
+          {
+            "group": "SDKs",
+            "pages": [
+              "sdks/node",
+              "sdks/python",
+              "sdks/go"
+            ]
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/windback-dev",
+          "icon": "github"
+        },
+        {
+          "anchor": "Discord",
+          "href": "https://discord.gg/windback",
+          "icon": "discord"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Dashboard",
+        "href": "https://windbackai.com/dashboard"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Get Started",
+      "href": "https://windbackai.com/register"
+    }
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/windbackdev",
+      "github": "https://github.com/windback-dev",
+      "discord": "https://discord.gg/windback",
+      "linkedin": "https://linkedin.com/company/windback-dev"
+    }
+  }
+}

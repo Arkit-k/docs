@@ -1,0 +1,37 @@
+---
+title: "Data Security"
+description: "How Windback protects your data with encryption and security best practices."
+---
+
+# Data Security
+
+Windback takes data security seriously. Here's how we protect your data.
+
+## Encryption at Rest
+
+All personally identifiable information (PII) is encrypted at rest using **AES-256-GCM** before storage:
+
+- Customer email addresses
+- Customer names
+- Cancel reason free-text responses
+
+Each field is encrypted with a unique nonce. The encryption key is configured via the `ENCRYPTION_KEY` environment variable and is never stored alongside the data.
+
+<Note>
+Encrypted fields are automatically decrypted when accessed through the API. The encryption is transparent to API consumers.
+</Note>
+
+## PII Masking in Logs
+
+Windback never logs raw PII. All customer emails and names are masked in application logs (e.g., `j***@example.com`).
+
+## Encryption in Transit
+
+All API traffic is encrypted via **TLS 1.2+**. The API enforces HTTPS in production.
+
+## Infrastructure
+
+- **Database**: PostgreSQL with connection pooling and TLS
+- **Cache**: Redis with TLS encryption (Upstash)
+- **Hosting**: Render with automatic TLS certificates
+- **Secrets**: Environment variables, never committed to source control

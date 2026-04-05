@@ -1,0 +1,75 @@
+---
+title: "Razorpay"
+description: "Connect Razorpay to detect cancellations and failed payments."
+---
+
+# Razorpay Integration
+
+Connect your Razorpay account to automatically detect subscription cancellations and payment failures.
+
+## Setup
+
+<Steps>
+  <Step title="Copy Your Webhook URL">
+    Find your webhook URL in **Settings > Integrations > Razorpay**. The format is:
+
+    ```
+    https://api.windbackai.com/api/v1/webhooks/razorpay/<your_public_key>
+    ```
+
+    Your public key starts with `pub_` and is unique to your project.
+  </Step>
+  <Step title="Add the Webhook in Razorpay Dashboard">
+    1. Go to [Razorpay Dashboard > Settings > Webhooks](https://dashboard.razorpay.com/app/webhooks)
+    2. Click **Add New Webhook**
+    3. Paste your Windback webhook URL
+    4. Select the events listed below
+    5. Click **Create Webhook**
+  </Step>
+  <Step title="Select Webhook Events">
+    Enable the following events in Razorpay:
+
+    | Razorpay Event | Windback Churn Type | Description |
+    |---|---|---|
+    | `subscription.cancelled` | Voluntary churn | Customer canceled their subscription |
+    | `payment.failed` | Involuntary churn | Payment attempt failed |
+    | `payment.captured` | Recovery | Payment successfully captured after failure |
+  </Step>
+</Steps>
+
+## Data Mapping
+
+When Windback receives a Razorpay webhook, the following fields are extracted:
+
+| Razorpay Field | Windback Field | Notes |
+|---|---|---|
+| `payload.payment.entity.email` | `customer_email` | From payment entity |
+| `payload.payment.entity.contact` | `customer_name` | Falls back to email prefix |
+| `payload.payment.entity.amount` | `mrr` | Amount in smallest currency unit (paise) |
+| `payload.payment.entity.currency` | `currency` | ISO 4217 code (e.g., `inr`) |
+| `payload.subscription.entity.plan_id` | `plan_name` | Razorpay plan identifier |
+| `payload.subscription.entity.created_at` | `tenure_days` | Calculated from subscription start |
+
+## Webhook Resilience
+
+<Info>
+Windback webhook endpoints **always return HTTP 200** regardless of internal processing status. This prevents Razorpay from disabling your webhook due to repeated failures.
+</Info>
+
+Events are queued and processed asynchronously. If processing fails internally, events are retried automatically. You will never lose a churn event due to a transient error.
+
+## Verifying the Connection
+
+After setup, verify the integration:
+
+1. Create a test subscription in Razorpay test mode
+2. Cancel the subscription to trigger a `subscription.cancelled` event
+3. Check your Windback dashboard for the new churn event
+
+<Warning>
+Use Razorpay test mode keys during development. Never send test events to a production webhook URL.
+</Warning>
+
+<Note>
+Razorpay webhooks include a `X-Razorpay-Signature` header. Windback currently authenticates via the public key in the URL. Keep your webhook URL private.
+</Note>
